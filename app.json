@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/images/logo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.sanatanbrahmacharyamobile"
+      "package": "com.sanatan.app"
     },
     "web": {
       "output": "static",
