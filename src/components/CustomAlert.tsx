@@ -1,0 +1,98 @@
+import React from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { FontAwesome5 } from '@expo/vector-icons';
+
+interface CustomAlertProps {
+  visible: boolean;
+  title: string;
+  message: string;
+  onClose: () => void;
+}
+
+export default function CustomAlert({ visible, title, message, onClose }: CustomAlertProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      statusBarTranslucent
+    >
+      <View style={styles.overlay}>
+        <View style={styles.card}>
+          <View style={styles.iconWrapper}>
+            <FontAwesome5 name="exclamation-circle" size={20} color="#EA580C" />
+          </View>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.message}>{message}</Text>
+          <TouchableOpacity style={styles.button} onPress={onClose} activeOpacity={0.85}>
+            <Text style={styles.buttonText}>OK</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)', // slate semi-transparent overlay
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 300,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  iconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF7ED', // warm light orange background
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  button: {
+    width: '100%',
+    height: 46,
+    backgroundColor: '#EA580C', // theme orange
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+});

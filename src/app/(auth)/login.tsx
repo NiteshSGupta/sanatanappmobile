@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 import api from '../../utils/api';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -13,9 +14,27 @@ export default function LoginScreen() {
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+
+  const showAlert = (title: string, message: string) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertVisible(true);
+  };
+
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Please enter both username and password.');
+    if (!username.trim()) {
+      showAlert('Error', 'Please enter your username.');
+      return;
+    }
+    if (!password) {
+      showAlert('Error', 'Please enter your password.');
+      return;
+    }
+    if (password.length < 4) {
+      showAlert('Error', 'Password must be at least 4 characters long.');
       return;
     }
 
@@ -36,11 +55,11 @@ export default function LoginScreen() {
         }
         router.replace('/(tabs)');
       } else {
-        Alert.alert('Error', response.data.message || 'Login failed.');
+        showAlert('Error', response.data.message || 'Login failed.');
       }
     } catch (error: any) {
       const message = error.response?.data?.message || 'Network error. Please try again later.';
-      Alert.alert('Error', message);
+      showAlert('Error', message);
     } finally {
       setLoading(false);
     }
@@ -49,17 +68,30 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
         {/* Logo / Heading */}
         <View style={styles.headerContainer}>
           <View style={styles.iconWrapper}>
-             <FontAwesome5 name="om" size={28} color="#EA580C" />
+             <FontAwesome5 name="om" size={32} color="#FFFFFF" />
           </View>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Continue your Brahmacharya journey</Text>
+          <Text style={styles.title}>Brahmacharya</Text>
+          <Text style={styles.subtitle}>Your companion on the path of self-mastery</Text>
+        </View>
+
+        {/* Tab Selector */}
+        <View style={styles.tabSelectorContainer}>
+          <View style={[styles.tabButton, styles.activeTabButton]}>
+            <Text style={styles.activeTabButtonText}>Sign In</Text>
+          </View>
+          <TouchableOpacity 
+            style={[styles.tabButton, styles.inactiveTabButton]}
+            onPress={() => router.replace('/(auth)/register')}
+          >
+            <Text style={styles.inactiveTabButtonText}>Register</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Login Form */}
@@ -67,13 +99,12 @@ export default function LoginScreen() {
           
           {/* Username Field */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Username</Text>
+            <Text style={styles.label}>USERNAME</Text>
             <View style={styles.inputContainer}>
-              <FontAwesome5 name="user" size={16} color="#9CA3AF" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Enter your username"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#94A3B8"
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
@@ -83,19 +114,18 @@ export default function LoginScreen() {
 
           {/* Password Field */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>PASSWORD</Text>
             <View style={styles.inputContainer}>
-              <FontAwesome5 name="lock" size={16} color="#9CA3AF" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Enter your password"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#94A3B8"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                 <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={16} color="#9CA3AF" />
+                 <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={16} color="#94A3B8" />
               </TouchableOpacity>
             </View>
           </View>
@@ -123,21 +153,33 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Enter</Text>
+              <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
+            <Text style={styles.footerText}>New here? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.linkText}>Register here</Text>
+              <Text style={styles.linkText}>Create an account</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Footer Note */}
-        <Text style={styles.bottomNote}>Discipline builds power. Power builds character.</Text>
+        {/* Privacy Note */}
+        <View style={styles.privacyCard}>
+          <FontAwesome5 name="lock" size={16} color="#1E293B" style={styles.privacyIcon} />
+          <Text style={styles.privacyText}>
+            <Text style={styles.privacyBold}>Privacy first.</Text> No email or phone required. All data stays on your device only.
+          </Text>
+        </View>
+
       </ScrollView>
+      <CustomAlert 
+        visible={alertVisible} 
+        title={alertTitle} 
+        message={alertMessage} 
+        onClose={() => setAlertVisible(false)} 
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -145,48 +187,86 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA', // very light gray almost white, standard GuestLayout background
+    backgroundColor: '#F5F4F0', // warm beige background
   },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    paddingTop: 60,
   },
   headerContainer: {
     alignItems: 'center',
     marginBottom: 32,
   },
   iconWrapper: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#FFEDD5', // saffron-100
-    borderRadius: 24,
+    width: 68,
+    height: 68,
+    backgroundColor: '#EA580C', // orange box icon
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#7C2D12', // saffron-900
+    color: '#0F172A', // dark text
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
-    color: '#6B7280', // gray-500
-    marginTop: 8,
+    color: '#64748B', // gray
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  tabSelectorContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 32,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  activeTabButton: {
+    backgroundColor: '#EA580C',
+  },
+  inactiveTabButton: {
+    backgroundColor: '#FFFFFF',
+  },
+  activeTabButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  inactiveTabButtonText: {
+    color: '#64748B',
+    fontWeight: '500',
+    fontSize: 15,
   },
   formContainer: {
-    // GuestLayout usually doesn't have a white card for login in some themes, but we'll keep it clean
     width: '100%',
   },
   inputGroup: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151', // gray-700
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 1,
     marginBottom: 8,
   },
   inputContainer: {
@@ -194,19 +274,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D1D5DB', // gray-300
-    borderRadius: 12,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
     paddingHorizontal: 16,
-    height: 52,
-  },
-  inputIcon: {
-    marginRight: 12,
+    height: 54,
   },
   input: {
     flex: 1,
     height: '100%',
-    fontSize: 16,
-    color: '#111827',
+    fontSize: 15,
+    color: '#0F172A',
   },
   eyeIcon: {
     padding: 8,
@@ -224,10 +301,10 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    marginRight: 8,
+    borderColor: '#CBD5E1',
+    marginRight: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -237,19 +314,19 @@ const styles = StyleSheet.create({
   },
   rememberText: {
     fontSize: 14,
-    color: '#4B5563', // gray-600
+    color: '#475569',
   },
   button: {
-    backgroundColor: '#EA580C', // saffron-600
-    borderRadius: 12,
-    height: 52,
+    backgroundColor: '#EA580C',
+    borderRadius: 14,
+    height: 54,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FED7AA', // saffron-200
+    shadowColor: '#EA580C',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
+    shadowOpacity: 0.15,
     shadowRadius: 10,
-    elevation: 4,
+    elevation: 3,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -257,26 +334,44 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   footerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 24,
+    marginTop: 20,
   },
   footerText: {
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 14,
   },
   linkText: {
     color: '#EA580C',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  bottomNote: {
-    fontSize: 12,
-    color: '#9CA3AF', // gray-400
-    textAlign: 'center',
-    marginTop: 32,
-  }
+  privacyCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 48,
+    gap: 12,
+  },
+  privacyIcon: {
+    marginRight: 2,
+  },
+  privacyText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+  },
+  privacyBold: {
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
 });

@@ -1,47 +1,81 @@
+/* eslint-disable react-hooks/immutability */
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, { 
   useSharedValue, 
-  useAnimatedStyle, 
+  useAnimatedStyle,
   withTiming, 
-  withRepeat,
-  withSequence,
   useAnimatedProps,
   Easing
 } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 
-const { width } = Dimensions.get('window');
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const CIRCLE_RADIUS = 100;
+const STAGES = [
+  { name: 'Inhale', duration: 4, label: 'INHALE 4S' },
+  { name: 'Hold', duration: 4, label: 'HOLD 4S' },
+  { name: 'Exhale', duration: 8, label: 'EXHALE 8S' },
+  { name: 'Pause', duration: 2, label: 'PAUSE 2S' },
+];
+
+const CIRCLE_RADIUS = 90;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
-const GOAL_DAYS = 90;
+const GAUGE_SPAN = 0.75; // 3/4 circle arc
 
 export default function JourneyScreen() {
+  const [user, setUser] = useState<any>(null);
   const [journeyStart, setJourneyStart] = useState<Date | null>(null);
   const [days, setDays] = useState(0);
   const [hours, setHours] = useState('00');
   const [minutes, setMinutes] = useState('00');
   const [seconds, setSeconds] = useState('00');
-  
-  const [isUrgeModalOpen, setIsUrgeModalOpen] = useState(false);
   const [isRelapseModalOpen, setIsRelapseModalOpen] = useState(false);
-  const [urgeSeconds, setUrgeSeconds] = useState(60);
-  const [isUrgeActive, setIsUrgeActive] = useState(false);
+  const [relapseReason, setRelapseReason] = useState('');
   
   const progressOffset = useSharedValue(CIRCLE_CIRCUMFERENCE);
-  const breatheScale = useSharedValue(1);
+
+  const [isUrgeModalOpen, setIsUrgeModalOpen] = useState(false);
+  const [isUrgeActive, setIsUrgeActive] = useState(false);
+  const [urgeElapsed, setUrgeElapsed] = useState(0);
+  const [urgeCycles, setUrgeCycles] = useState(0);
+  const [urgeStageIndex, setUrgeStageIndex] = useState(0);
+  const [urgeStageTimeLeft, setUrgeStageTimeLeft] = useState(4); // Default to inhale duration
+  const urgeCircleScale = useSharedValue(1);
+
+  // League computation matching Figma layout
+  const getLeagueData = useCallback((currentDays: number) => {
+    if (currentDays < 7) {
+      return { current: 'Shishya', next: 'Sadhaka', nextDaysReq: 7, icon: 'seedling' };
+    } else if (currentDays < 30) {
+      return { current: 'Sadhaka', next: 'Tapasvi', nextDaysReq: 30, icon: 'leaf' };
+    } else if (currentDays < 90) {
+      return { current: 'Tapasvi', next: 'Brahmacharya', nextDaysReq: 90, icon: 'fire' };
+    } else if (currentDays < 365) {
+      return { current: 'Brahmacharya', next: 'Maharishi', nextDaysReq: 365, icon: 'shield-alt' };
+    } else {
+      return { current: 'Maharishi', next: 'None', nextDaysReq: 0, icon: 'om' };
+    }
+  }, []);
 
   const loadJourney = async () => {
     try {
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
       const savedStart = await AsyncStorage.getItem('ojas_journey_start');
       if (savedStart) {
         setJourneyStart(new Date(savedStart));
+      } else {
+        // If not started, default to now or don't set
+        const now = new Date();
+        setJourneyStart(now);
+        await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
       }
     } catch (e) {
       console.error(e);
@@ -71,8 +105,15 @@ export default function JourneyScreen() {
           setMinutes(m.toString().padStart(2, '0'));
           setSeconds(s.toString().padStart(2, '0'));
 
-          const percent = Math.min((d / GOAL_DAYS) * 100, 100);
-          const offset = CIRCLE_CIRCUMFERENCE - (percent / 100) * CIRCLE_CIRCUMFERENCE;
+          // Calculate progress percentage inside current league
+          const leagueData = getLeagueData(d);
+          const percent = leagueData.nextDaysReq > 0
+            ? Math.min((d / leagueData.nextDaysReq) * 100, 100)
+            : 100;
+          
+          // Maps progress percentage to the 3/4 circle arc (GAUGE_SPAN)
+          const fillPercentage = (percent / 100) * GAUGE_SPAN;
+          const offset = CIRCLE_CIRCUMFERENCE - fillPercentage * CIRCLE_CIRCUMFERENCE;
           progressOffset.value = withTiming(offset, { duration: 1000, easing: Easing.out(Easing.ease) });
         }
       }, 1000);
@@ -80,7 +121,7 @@ export default function JourneyScreen() {
       progressOffset.value = CIRCLE_CIRCUMFERENCE;
     }
     return () => clearInterval(interval);
-  }, [journeyStart]);
+  }, [journeyStart, progressOffset, getLeagueData]);
 
   const animatedCircleProps = useAnimatedProps(() => {
     return {
@@ -88,74 +129,106 @@ export default function JourneyScreen() {
     };
   });
 
-  const breatheStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: breatheScale.value }]
-    };
-  });
-
-  const startJourney = async () => {
-    const now = new Date();
-    setJourneyStart(now);
-    await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
-  };
-
   const confirmRelapse = async () => {
     const now = new Date();
+    try {
+      const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
+      const relapses = storedRelapses ? JSON.parse(storedRelapses) : [];
+      relapses.push({
+        date: now.toISOString(),
+        reason: relapseReason.trim() || 'No reason specified',
+      });
+      await AsyncStorage.setItem('ojas_relapses', JSON.stringify(relapses));
+    } catch (e) {
+      console.error('Error saving relapse:', e);
+    }
+
     setJourneyStart(now);
     await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
     setIsRelapseModalOpen(false);
+    setRelapseReason('');
   };
+
+  // Urge Surfer Timer and Breathing Logic
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isUrgeModalOpen && isUrgeActive) {
+      interval = setInterval(() => {
+        setUrgeElapsed(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isUrgeModalOpen, isUrgeActive]);
+
+  useEffect(() => {
+    let breathingInterval: ReturnType<typeof setInterval>;
+    if (isUrgeModalOpen && isUrgeActive) {
+      const currentStage = STAGES[urgeStageIndex].name;
+      if (currentStage === 'Inhale') {
+        urgeCircleScale.value = withTiming(1.4, {
+          duration: STAGES[urgeStageIndex].duration * 1000,
+          easing: Easing.inOut(Easing.ease),
+        });
+      } else if (currentStage === 'Exhale') {
+        urgeCircleScale.value = withTiming(1.0, {
+          duration: STAGES[urgeStageIndex].duration * 1000,
+          easing: Easing.inOut(Easing.ease),
+        });
+      }
+
+      breathingInterval = setInterval(() => {
+        setUrgeStageTimeLeft((prevTime) => {
+          if (prevTime <= 1) {
+            const nextIndex = (urgeStageIndex + 1) % STAGES.length;
+            setUrgeStageIndex(nextIndex);
+            if (nextIndex === 0) {
+              setUrgeCycles(c => c + 1);
+            }
+            return STAGES[nextIndex].duration;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(breathingInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUrgeModalOpen, isUrgeActive, urgeStageIndex]);
+
+  const animatedUrgeCircleStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: urgeCircleScale.value }],
+    };
+  });
 
   const openUrgeSurfer = () => {
     setIsUrgeModalOpen(true);
-    setUrgeSeconds(60);
-    setIsUrgeActive(true);
-    
-    // Start breathing animation
-    breatheScale.value = withRepeat(
-      withSequence(
-        withTiming(1.5, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      true
-    );
+    setIsUrgeActive(false); // do not start automatically, waits for click
+    setUrgeElapsed(0);
+    setUrgeCycles(0);
+    setUrgeStageIndex(0);
+    setUrgeStageTimeLeft(4);
+    urgeCircleScale.value = 1;
   };
 
   const closeUrgeSurfer = () => {
     setIsUrgeModalOpen(false);
     setIsUrgeActive(false);
-    breatheScale.value = 1;
   };
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isUrgeActive && urgeSeconds > 0) {
-      interval = setInterval(() => {
-        setUrgeSeconds(prev => prev - 1);
-      }, 1000);
-    } else if (urgeSeconds === 0) {
-      setIsUrgeActive(false);
-    }
-    return () => clearInterval(interval);
-  }, [isUrgeActive, urgeSeconds]);
-
-  const renderMilestone = (dayReq: number, currentDays: number, title: string, desc: string, icon: string) => {
-    const isAchieved = currentDays >= dayReq;
-    return (
-      <View style={styles.milestoneContainer} key={dayReq}>
-        <View style={styles.timelineLine} />
-        <View style={[styles.milestoneIcon, isAchieved ? styles.milestoneIconAchieved : {}]}>
-          <FontAwesome5 name={icon} size={16} color={isAchieved ? "#FFFFFF" : "#94A3B8"} />
-        </View>
-        <View style={[styles.milestoneCard, isAchieved ? styles.milestoneCardAchieved : {}]}>
-          <Text style={styles.milestoneTitle}>Day {dayReq}: {title}</Text>
-          <Text style={styles.milestoneDesc}>{desc}</Text>
-        </View>
-      </View>
-    );
+  const resetUrgeSurfer = () => {
+    setUrgeElapsed(0);
+    setUrgeCycles(0);
+    setUrgeStageIndex(0);
+    setUrgeStageTimeLeft(4);
+    urgeCircleScale.value = 1;
   };
+
+
+
+  const league = getLeagueData(days);
+  const nextLeagueText = league.next !== 'None' ? `Next: 🛡️ ${league.next}` : 'Ultimate Level achieved!';
+  const daysRemainingText = league.nextDaysReq > 0 ? `${league.nextDaysReq - days} days away` : 'Max tier';
+  const progressPercent = league.nextDaysReq > 0 ? Math.min((days / league.nextDaysReq) * 100, 100) : 100;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -163,31 +236,36 @@ export default function JourneyScreen() {
         
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerLogo}>
-            <FontAwesome5 name="om" size={24} color="#EA580C" />
+          <View style={styles.headerLeft}>
+            <View style={styles.headerLogo}>
+              <FontAwesome5 name="om" size={20} color="#FFFFFF" />
+            </View>
+            <Text style={styles.headerTitle}>Brahmacharya</Text>
           </View>
-          <Text style={styles.headerTitle}>Brahmacharya</Text>
+          <Text style={styles.headerUser}>Hi, {user?.name?.split(' ')[0] || 'seeker'}</Text>
         </View>
 
-        {/* Hero Section */}
+        {/* Hero Circular Progress Gauge Card */}
         <View style={styles.heroCard}>
-          <View style={styles.heroGradient} />
           <Text style={styles.streakLabel}>CURRENT STREAK</Text>
           
-          <TouchableOpacity 
-            activeOpacity={0.9} 
-            onPress={!journeyStart ? startJourney : undefined}
-            style={styles.circleWrapper}
-          >
-            <FontAwesome5 name="om" size={140} color="rgba(234, 88, 12, 0.05)" style={styles.omBackground} />
+          <View style={styles.circleWrapper}>
+            {/* Om Background Watermark */}
+            <View style={styles.omWatermark}>
+              <FontAwesome5 name="om" size={120} color="#EA580C" style={{ opacity: 0.05 }} />
+            </View>
             
-            <Svg width={CIRCLE_RADIUS * 2 + 20} height={CIRCLE_RADIUS * 2 + 20} viewBox="0 0 220 220" style={{ transform: [{ rotate: '-90deg' }] }}>
+            {/* Svg Semi-Circle Ring */}
+            <Svg width={CIRCLE_RADIUS * 2 + 20} height={CIRCLE_RADIUS * 2 + 20} viewBox="0 0 200 200" style={styles.svgRotation}>
               <Circle
-                cx="110" cy="110" r={CIRCLE_RADIUS}
-                stroke="#F1F5F9" strokeWidth="8" fill="transparent"
+                cx="100" cy="100" r={CIRCLE_RADIUS}
+                stroke="#E2E8F0" strokeWidth="8" fill="transparent"
+                strokeDasharray={CIRCLE_CIRCUMFERENCE}
+                strokeDashoffset={CIRCLE_CIRCUMFERENCE * (1 - GAUGE_SPAN)}
+                strokeLinecap="round"
               />
               <AnimatedCircle
-                cx="110" cy="110" r={CIRCLE_RADIUS}
+                cx="100" cy="100" r={CIRCLE_RADIUS}
                 stroke="#EA580C" strokeWidth="8" fill="transparent"
                 strokeLinecap="round"
                 strokeDasharray={CIRCLE_CIRCUMFERENCE}
@@ -195,74 +273,75 @@ export default function JourneyScreen() {
               />
             </Svg>
 
+            {/* Inner text */}
             <View style={styles.circleCenter}>
-              {!journeyStart ? (
-                <Text style={styles.startText}>Start{'\n'}Journey</Text>
-              ) : (
-                <>
-                  <Text style={styles.daysText}>{days}</Text>
-                  <Text style={styles.daysLabel}>Days</Text>
-                </>
-              )}
+              <Text style={styles.daysText}>{days}</Text>
+              <Text style={styles.daysLabel}>Days</Text>
             </View>
-          </TouchableOpacity>
+          </View>
 
-          {journeyStart && (
-            <View style={styles.timeGrid}>
-              <View style={styles.timeBlock}>
-                <Text style={styles.timeCount}>{hours}</Text>
-                <Text style={styles.timeLabel}>Hours</Text>
-              </View>
-              <View style={styles.timeBlock}>
-                <Text style={styles.timeCount}>{minutes}</Text>
-                <Text style={styles.timeLabel}>Minutes</Text>
-              </View>
-              <View style={styles.timeBlock}>
-                <Text style={styles.timeCount}>{seconds}</Text>
-                <Text style={styles.timeLabel}>Seconds</Text>
-              </View>
+          {/* Hours, Minutes, Seconds Counters */}
+          <View style={styles.timeGrid}>
+            <View style={styles.timeBlock}>
+              <Text style={styles.timeCount}>{hours}</Text>
+              <Text style={styles.timeLabel}>HOURS</Text>
             </View>
-          )}
+            <Text style={styles.timeDivider}>:</Text>
+            <View style={styles.timeBlock}>
+              <Text style={styles.timeCount}>{minutes}</Text>
+              <Text style={styles.timeLabel}>MINUTES</Text>
+            </View>
+            <Text style={styles.timeDivider}>:</Text>
+            <View style={styles.timeBlock}>
+              <Text style={styles.timeCount}>{seconds}</Text>
+              <Text style={styles.timeLabel}>SECONDS</Text>
+            </View>
+          </View>
 
-          {journeyStart && (
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.btnEmergency} onPress={openUrgeSurfer}>
-                <FontAwesome5 name="fire" size={16} color="#EF4444" />
-                <Text style={styles.btnEmergencyText}>Emergency</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnRelapse} onPress={() => setIsRelapseModalOpen(true)}>
-                <FontAwesome5 name="history" size={16} color="#64748B" />
-                <Text style={styles.btnRelapseText}>Relapsed</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Action Row */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.btnEmergency} onPress={openUrgeSurfer}>
+              <FontAwesome5 name="fire" size={16} color="#FFFFFF" />
+              <Text style={styles.btnEmergencyText}>Emergency</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnRelapse} onPress={() => setIsRelapseModalOpen(true)}>
+              <FontAwesome5 name="history" size={14} color="#0F172A" />
+              <Text style={styles.btnRelapseText}>Relapsed</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Daily Quote */}
+        {/* Daily Quote Card */}
         <View style={styles.quoteCard}>
-          <FontAwesome5 name="quote-left" size={24} color="#FED7AA" style={styles.quoteIcon} />
+          <Text style={styles.quoteIcon}>&quot;</Text>
           <Text style={styles.quoteText}>
-            "The chaste brain has tremendous energy and gigantic willpower. Without chastity there can be no spiritual strength."
+            &quot;Purity of thought, speech, and deed – this is the threefold tapas of the wise.&quot;
           </Text>
-          <Text style={styles.quoteAuthor}>— Swami Vivekananda</Text>
+          <Text style={styles.quoteAuthor}>— YOGA SUTRAS</Text>
         </View>
 
-        {/* Timeline */}
-        <View style={styles.timelineSection}>
-          <Text style={styles.sectionTitle}>
-            <FontAwesome5 name="seedling" size={18} color="#789b7b" /> Journey of the Seed
-          </Text>
-          
-          <View style={styles.timelineWrapper}>
-            {renderMilestone(7, days, 'Testosterone Spike', 'Physical energy increases. Brain fog begins to lift.', 'check')}
-            {renderMilestone(30, days, 'Mental Clarity', 'Dopamine baseline stabilizes. Increased confidence.', 'lock')}
-            {renderMilestone(90, days, 'Ojas Cultivation', 'Profound inner peace, magnetism, and willpower.', 'star')}
+        {/* Your League Card */}
+        <View style={styles.leagueCard}>
+          <View style={styles.leagueHeader}>
+            <View>
+              <Text style={styles.leagueTitle}>YOUR LEAGUE</Text>
+              <Text style={styles.activeLeagueText}>
+                <FontAwesome5 name={league.icon} size={16} color="#EA580C" /> {league.current}
+              </Text>
+            </View>
+            <View style={styles.leagueRight}>
+              <Text style={styles.nextLeagueText}>{nextLeagueText}</Text>
+              <Text style={styles.daysAwayText}>{daysRemainingText}</Text>
+            </View>
+          </View>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
           </View>
         </View>
 
       </ScrollView>
 
-      {/* Relapse Modal */}
+      {/* Relapse Reset Modal */}
       <Modal visible={isRelapseModalOpen} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -273,10 +352,30 @@ export default function JourneyScreen() {
             <Text style={styles.modalDesc}>
               Relapses happen on the path to mastery. Acknowledge it, learn from it, and begin again. Are you sure you want to reset your streak?
             </Text>
+
+            {/* Relapse Reason Input */}
+            <View style={styles.relapseInputContainer}>
+              <Text style={styles.relapseInputLabel}>WHAT WAS THE TRIGGER / REASON? (OPTIONAL)</Text>
+              <TextInput
+                style={styles.relapseTextInput}
+                placeholder="e.g. boredom, late night browsing, stress..."
+                placeholderTextColor="#94A3B8"
+                value={relapseReason}
+                onChangeText={setRelapseReason}
+                multiline
+              />
+            </View>
+
             <TouchableOpacity style={styles.modalBtnPrimary} onPress={confirmRelapse}>
               <Text style={styles.modalBtnPrimaryText}>Yes, Reset Streak</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalBtnSecondary} onPress={() => setIsRelapseModalOpen(false)}>
+            <TouchableOpacity 
+              style={styles.modalBtnSecondary} 
+              onPress={() => {
+                setIsRelapseModalOpen(false);
+                setRelapseReason('');
+              }}
+            >
               <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -291,32 +390,59 @@ export default function JourneyScreen() {
           </TouchableOpacity>
           
           <View style={styles.urgeContent}>
-            {urgeSeconds > 0 ? (
-              <>
-                <Text style={styles.urgeTitle}>Ride the Wave</Text>
-                <Text style={styles.urgeDesc}>An urge is just a sensation. Breathe with the circle.</Text>
-                
-                <View style={styles.breatheWrapper}>
-                  <Animated.View style={[styles.breatheCircleOutline, breatheStyle]} />
-                  <View style={styles.breatheCircleInner}>
-                    <Text style={styles.urgeTimerText}>{urgeSeconds}</Text>
+            <View style={styles.urgeHeaderInfo}>
+              <Text style={styles.urgeTitle}>Urge Surfer</Text>
+              <Text style={styles.urgeSubtitle}>
+                {Math.floor(urgeElapsed / 60)}:{(urgeElapsed % 60).toString().padStart(2, '0')} · {urgeCycles} {urgeCycles === 1 ? 'cycle' : 'cycles'}
+              </Text>
+            </View>
+
+            {/* Breathing Animated Circle */}
+            <View style={styles.urgeBreathContainer}>
+              <View style={styles.urgeOuterRing3}>
+                <View style={styles.urgeOuterRing2}>
+                  <View style={styles.urgeOuterRing1}>
+                    <TouchableOpacity activeOpacity={0.8} onPress={() => setIsUrgeActive(!isUrgeActive)}>
+                      <Animated.View style={[styles.urgeBreathCircle, animatedUrgeCircleStyle]}>
+                        <Text style={styles.urgeStageStateText}>{STAGES[urgeStageIndex].name}</Text>
+                        <Text style={styles.urgeStageTimerText}>{urgeStageTimeLeft}</Text>
+                      </Animated.View>
+                    </TouchableOpacity>
                   </View>
                 </View>
-                
-                <Text style={styles.urgeFooterText}>"This too shall pass."</Text>
-              </>
-            ) : (
-              <>
-                <View style={[styles.modalIconBg, { backgroundColor: 'rgba(34, 197, 94, 0.2)' }]}>
-                  <FontAwesome5 name="check" size={40} color="#22C55E" />
-                </View>
-                <Text style={[styles.urgeTitle, { marginTop: 24 }]}>Urge Survived</Text>
-                <Text style={styles.urgeDesc}>You successfully surfed the wave. Your energy remains protected.</Text>
-                <TouchableOpacity style={styles.modalBtnPrimary} onPress={closeUrgeSurfer}>
-                  <Text style={styles.modalBtnPrimaryText}>Return to Dashboard</Text>
-                </TouchableOpacity>
-              </>
-            )}
+              </View>
+            </View>
+
+            {/* Breathing Stage Timeline tracker */}
+            <View style={styles.urgeTimelineContainer}>
+              {STAGES.map((st, index) => {
+                const isCurrent = index === urgeStageIndex;
+                return (
+                  <View key={st.name} style={styles.urgeTimelineItem}>
+                    <View style={[styles.urgeTimelineDot, isCurrent && styles.urgeTimelineDotActive]} />
+                    <Text style={[styles.urgeTimelineLabel, isCurrent && styles.urgeTimelineLabelActive]}>
+                      {st.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.urgeActionContainer}>
+              <TouchableOpacity 
+                style={[styles.urgeBtnStop, urgeActiveBtnStyle(isUrgeActive)]} 
+                onPress={() => setIsUrgeActive(!isUrgeActive)}
+              >
+                <Text style={isUrgeActive ? styles.urgeBtnStopText : styles.urgeBtnStartText}>
+                  {isUrgeActive ? 'Stop' : 'Start'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.urgeBtnReset} onPress={resetUrgeSurfer}>
+                <Text style={styles.urgeBtnResetText}>Reset</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -325,10 +451,14 @@ export default function JourneyScreen() {
   );
 }
 
+const urgeActiveBtnStyle = (active: boolean) => {
+  return active ? styles.urgeBtnActiveStop : styles.urgeBtnActiveStart;
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FCFBF9',
+    backgroundColor: '#F5F4F0', // warm beige background
   },
   scrollContent: {
     padding: 20,
@@ -337,132 +467,145 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 24,
+    marginTop: 10,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   headerLogo: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFEDD5',
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#EA580C',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#7C2D12',
+    color: '#0F172A',
+  },
+  headerUser: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   heroCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    elevation: 4,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  heroGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 8,
-    backgroundColor: '#EA580C',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 20,
   },
   streakLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: '#94A3B8',
-    letterSpacing: 2,
-    marginBottom: 24,
+    letterSpacing: 1.5,
+    marginBottom: 20,
   },
   circleWrapper: {
     width: CIRCLE_RADIUS * 2 + 20,
     height: CIRCLE_RADIUS * 2 + 20,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
-  omBackground: {
+  omWatermark: {
     position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  svgRotation: {
+    transform: [{ rotate: '-225deg' }], // rotate so open arc faces bottom center
+    zIndex: 2,
   },
   circleCenter: {
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 3,
   },
   daysText: {
-    fontSize: 56,
+    fontSize: 54,
     fontWeight: 'bold',
-    color: '#1E293B',
-    lineHeight: 64,
+    color: '#0F172A',
+    lineHeight: 60,
   },
   daysLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#64748B',
   },
-  startText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#EA580C',
-    textAlign: 'center',
-  },
   timeGrid: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     width: '100%',
-    marginTop: 32,
-    gap: 32,
+    marginTop: 20,
+    gap: 8,
   },
   timeBlock: {
     alignItems: 'center',
+    width: 60,
   },
   timeCount: {
     fontSize: 24,
-    fontWeight: '600',
-    color: '#334155',
+    fontWeight: '700',
+    color: '#0F172A',
   },
   timeLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#94A3B8',
-    textTransform: 'uppercase',
+    fontWeight: '700',
     letterSpacing: 1,
     marginTop: 4,
+  },
+  timeDivider: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#E2E8F0',
+    marginTop: -14,
   },
   actionRow: {
     flexDirection: 'row',
     gap: 12,
     width: '100%',
-    marginTop: 32,
+    marginTop: 28,
   },
   btnEmergency: {
-    flex: 1,
+    flex: 1.1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-    borderWidth: 1,
+    backgroundColor: '#EA580C',
     paddingVertical: 14,
     borderRadius: 16,
     gap: 8,
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
   },
   btnEmergencyText: {
-    color: '#EF4444',
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
     fontSize: 15,
   },
   btnRelapse: {
-    flex: 1,
+    flex: 0.9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderColor: '#E2E8F0',
     borderWidth: 1,
     paddingVertical: 14,
@@ -470,116 +613,95 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   btnRelapseText: {
-    color: '#64748B',
-    fontWeight: '600',
+    color: '#0F172A',
+    fontWeight: '700',
     fontSize: 15,
   },
   quoteCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    elevation: 2,
-    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 20,
     position: 'relative',
   },
   quoteIcon: {
+    fontSize: 60,
+    fontWeight: 'bold',
+    color: '#FFEDD5',
     position: 'absolute',
-    top: 24,
-    left: 24,
+    top: -10,
+    left: 20,
+    height: 60,
   },
   quoteText: {
-    fontSize: 16,
+    fontSize: 15,
     fontStyle: 'italic',
     color: '#334155',
-    lineHeight: 26,
-    marginTop: 12,
-    marginLeft: 16,
-    marginBottom: 16,
+    lineHeight: 24,
+    marginTop: 20,
+    marginBottom: 12,
   },
   quoteAuthor: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#C2410C',
-    textTransform: 'uppercase',
-    marginLeft: 16,
+    color: '#EA580C',
     letterSpacing: 1,
   },
-  timelineSection: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timelineWrapper: {
-    marginLeft: 16,
-  },
-  milestoneContainer: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    position: 'relative',
-  },
-  timelineLine: {
-    position: 'absolute',
-    left: 19,
-    top: 30,
-    bottom: -30,
-    width: 2,
-    backgroundColor: '#E2E8F0',
-    zIndex: 1,
-  },
-  milestoneIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 4,
-    borderColor: '#FCFBF9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  milestoneIconAchieved: {
-    backgroundColor: '#EA580C',
-  },
-  milestoneCard: {
-    flex: 1,
-    marginLeft: 16,
+  leagueCard: {
     backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 16,
-    opacity: 0.7,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 1,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  milestoneCardAchieved: {
-    opacity: 1,
+  leagueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  milestoneTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#1E293B',
+  leagueTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 1,
     marginBottom: 4,
   },
-  milestoneDesc: {
+  activeLeagueText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+  leagueRight: {
+    alignItems: 'flex-end',
+  },
+  nextLeagueText: {
     fontSize: 13,
+    fontWeight: '600',
     color: '#64748B',
-    lineHeight: 20,
+  },
+  daysAwayText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#EA580C',
+    marginTop: 2,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#EA580C',
+    borderRadius: 4,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -590,25 +712,22 @@ const styles = StyleSheet.create({
     padding: 32,
     width: '100%',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   modalIconBg: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: '#FEF2F2',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: '#0F172A',
     marginBottom: 12,
   },
   modalDesc: {
@@ -616,7 +735,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 32,
+    marginBottom: 28,
   },
   modalBtnPrimary: {
     backgroundColor: '#EA580C',
@@ -645,69 +764,191 @@ const styles = StyleSheet.create({
   },
   urgeOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    justifyContent: 'center',
+    backgroundColor: '#F5F4F0', // warm beige background
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 40,
   },
   closeBtn: {
     position: 'absolute',
-    top: 60,
+    top: 50,
     right: 24,
     padding: 12,
     zIndex: 10,
   },
   urgeContent: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
     width: '100%',
-    paddingHorizontal: 40,
+    paddingTop: 40,
+  },
+  urgeHeaderInfo: {
     alignItems: 'center',
   },
   urgeTitle: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 12,
+    color: '#0F172A',
+    marginBottom: 6,
   },
-  urgeDesc: {
-    fontSize: 16,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: 64,
+  urgeSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
   },
-  breatheWrapper: {
-    width: 200,
-    height: 200,
+  urgeBreathContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 64,
   },
-  breatheCircleOutline: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(234, 88, 12, 0.2)',
+  urgeOuterRing3: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(234, 88, 12, 0.02)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  breatheCircleInner: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#EA580C',
+  urgeOuterRing2: {
+    width: 270,
+    height: 270,
+    borderRadius: 135,
+    backgroundColor: 'rgba(234, 88, 12, 0.03)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  urgeOuterRing1: {
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(234, 88, 12, 0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  urgeBreathCircle: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: '#FFEDD5', // light orange tint
+    borderWidth: 2,
+    borderColor: '#FDBA74',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#EA580C',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 3,
   },
-  urgeTimerText: {
+  urgeStageStateText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#EA580C',
+    marginBottom: 4,
+  },
+  urgeStageTimerText: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#EA580C',
   },
-  urgeFooterText: {
+  urgeTimelineContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 20,
+    gap: 16,
+    marginBottom: 40,
+  },
+  urgeTimelineItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  urgeTimelineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
+    marginBottom: 8,
+  },
+  urgeTimelineDotActive: {
+    backgroundColor: '#EA580C',
+  },
+  urgeTimelineLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  urgeTimelineLabelActive: {
+    color: '#EA580C',
+  },
+  urgeActionContainer: {
+    width: '100%',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  urgeBtnStop: {
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+  },
+  urgeBtnActiveStop: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+  },
+  urgeBtnActiveStart: {
+    backgroundColor: '#EA580C',
+    borderColor: '#EA580C',
+  },
+  urgeBtnStopText: {
     fontSize: 16,
-    fontStyle: 'italic',
-    color: '#64748B',
-  }
+    color: '#475569',
+    fontWeight: '700',
+  },
+  urgeBtnStartText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  urgeBtnReset: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    width: '100%',
+  },
+  urgeBtnResetText: {
+    fontSize: 16,
+    color: '#475569',
+    fontWeight: '700',
+  },
+  relapseInputContainer: {
+    width: '100%',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  relapseInputLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+  },
+  relapseTextInput: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
 });
