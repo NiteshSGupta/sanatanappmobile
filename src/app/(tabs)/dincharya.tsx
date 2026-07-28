@@ -2,30 +2,29 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomAlert from '../../components/CustomAlert';
 import Svg, { Circle } from 'react-native-svg';
 import api from '../../utils/api';
 
-const DEFAULT_TASKS = [
-  { id: '1', title: 'Cold bath (Snan)', icon: 'water', completed: false },
-  { id: '2', title: 'Morning meditation (30 min)', icon: 'spa', completed: false },
-  { id: '3', title: 'Surya Namaskar (12 rounds)', icon: 'sun', completed: false },
-  { id: '4', title: 'Pranayama (15 min)', icon: 'wind', completed: false },
-  { id: '5', title: 'Scripture study', icon: 'book', completed: false },
-  { id: '6', title: 'Sattvic meal', icon: 'leaf', completed: false },
-  { id: '7', title: 'Evening journaling', icon: 'pen', completed: false },
-];
 
-const getWeekDaysList = () => {
+
+const getMonthDaysList = (dateString?: string) => {
   const daysArr = [];
-  const today = new Date();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
+  const date = dateString ? new Date(dateString) : new Date();
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed
+  
+  // Total days in month
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  
+  for (let i = 1; i <= totalDays; i++) {
+    const d = new Date(year, month, i);
     const dateStr = d.toISOString().split('T')[0];
-    const dayName = d.toLocaleDateString('en-US', { weekday: 'narrow' }); // S, M, T, W...
-    const dayNum = d.getDate();
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'narrow' }); // S, M, T...
+    const dayNum = i;
+    
     daysArr.push({
       dateStr,
       dayName,
@@ -48,8 +47,19 @@ export default function DincharyaScreen() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskIcon, setNewTaskIcon] = useState('clipboard-list');
 
-  // Days list for the calendar row
-  const [weekDays, setWeekDays] = useState<any[]>(() => getWeekDaysList());
+  // Custom Alert States
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+
+  const showCustomAlert = (title: string, message: string) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertVisible(true);
+  };
+
+  // Month days list for the calendar
+  const [monthDays, setMonthDays] = useState<any[]>(() => getMonthDaysList());
 
   const loadData = useCallback(async (dateToLoad: string) => {
     try {
@@ -62,7 +72,7 @@ export default function DincharyaScreen() {
       if (storedTasks) {
         setTasks(JSON.parse(storedTasks));
       } else {
-        setTasks(DEFAULT_TASKS.map(t => ({ ...t, completed: false })));
+        setTasks([]);
       }
 
       const syncTime = await AsyncStorage.getItem('last_synced');
@@ -70,17 +80,21 @@ export default function DincharyaScreen() {
         setLastSynced(syncTime);
       }
 
-      const baseDays = getWeekDaysList();
-      const updatedWeekDays = await Promise.all(baseDays.map(async (wd) => {
-        const dateTasksStr = await AsyncStorage.getItem(`dincharya_${wd.dateStr}`);
+      const baseDays = getMonthDaysList(dateToLoad);
+      const keys = baseDays.map(wd => `dincharya_${wd.dateStr}`);
+      const pairs = await AsyncStorage.multiGet(keys);
+      const taskMap = Object.fromEntries(pairs);
+
+      const updatedMonthDays = baseDays.map((wd) => {
+        const dateTasksStr = taskMap[`dincharya_${wd.dateStr}`];
         if (dateTasksStr) {
           const dateTasks = JSON.parse(dateTasksStr);
           const hasCompleted = dateTasks.some((t: any) => t.completed);
           return { ...wd, completed: hasCompleted };
         }
         return wd;
-      }));
-      setWeekDays(updatedWeekDays);
+      });
+      setMonthDays(updatedMonthDays);
 
     } catch (e) {
       console.error('Error loading data:', e);
@@ -108,15 +122,28 @@ export default function DincharyaScreen() {
     }, [selectedDate, loadData])
   );
 
+  const changeMonth = (direction: number) => {
+    const d = new Date(selectedDate);
+    d.setMonth(d.getMonth() + direction);
+    d.setDate(1);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
   const toggleTask = async (id: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (selectedDate !== todayStr) {
+      showCustomAlert('Mindfulness Check', 'You cannot change routines for past or future dates. Focus on today\'s habits in the present moment. 🙏');
+      return;
+    }
+
     const updatedTasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
     setTasks(updatedTasks);
 
     try {
       await AsyncStorage.setItem(`dincharya_${selectedDate}`, JSON.stringify(updatedTasks));
 
-      // Update dots on calendar row
-      setWeekDays(prev => prev.map(wd => {
+      // Update dots on calendar grid
+      setMonthDays(prev => prev.map(wd => {
         if (wd.dateStr === selectedDate) {
           return { ...wd, completed: updatedTasks.some(t => t.completed) };
         }
@@ -129,7 +156,7 @@ export default function DincharyaScreen() {
 
   const handleAddNewTask = async () => {
     if (!newTaskTitle.trim()) {
-      Alert.alert('Error', 'Please enter a task name.');
+      showCustomAlert('Error', 'Please enter a task name.');
       return;
     }
     const newTask = {
@@ -137,6 +164,7 @@ export default function DincharyaScreen() {
       title: newTaskTitle.trim(),
       icon: newTaskIcon,
       completed: false,
+      keystone: false,
     };
     const updatedTasks = [...tasks, newTask];
     setTasks(updatedTasks);
@@ -144,9 +172,62 @@ export default function DincharyaScreen() {
       await AsyncStorage.setItem(`dincharya_${selectedDate}`, JSON.stringify(updatedTasks));
       setIsAddModalOpen(false);
       setNewTaskTitle('');
+
+      // Update dots on calendar grid
+      setMonthDays(prev => prev.map(wd => {
+        if (wd.dateStr === selectedDate) {
+          return { ...wd, completed: true };
+        }
+        return wd;
+      }));
     } catch (e) {
       console.error('Error saving new task:', e);
     }
+  };
+
+  const renderCalendarCells = () => {
+    const d = new Date(selectedDate);
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const firstDayIndex = new Date(year, month, 1).getDay(); // Offset (0 = Sun, 1 = Mon...)
+    
+    const cells = [];
+    // 1. Add empty padding cells
+    for (let i = 0; i < firstDayIndex; i++) {
+      cells.push(<View key={`empty-${i}`} style={styles.calendarCellEmpty} />);
+    }
+    
+    // 2. Add day cells
+    monthDays.forEach((wd) => {
+      const isSelected = wd.dateStr === selectedDate;
+      const isToday = wd.dateStr === new Date().toISOString().split('T')[0];
+      
+      cells.push(
+        <TouchableOpacity
+          key={wd.dateStr}
+          style={[
+            styles.calendarCell, 
+            isSelected && styles.calendarCellSelected,
+            isToday && !isSelected && styles.calendarCellToday
+          ]}
+          onPress={() => setSelectedDate(wd.dateStr)}
+        >
+          <Text style={[
+            styles.calendarCellText, 
+            isSelected && styles.calendarCellTextSelected,
+            isToday && !isSelected && styles.calendarCellTextToday
+          ]}>
+            {wd.dayNum}
+          </Text>
+          <View style={[
+            styles.cellDot, 
+            wd.completed ? styles.cellDotCompleted : styles.cellDotEmpty
+          ]} />
+        </TouchableOpacity>
+      );
+    });
+    
+    return cells;
   };
 
   const syncData = async () => {
@@ -167,11 +248,11 @@ export default function DincharyaScreen() {
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setLastSynced(time);
         await AsyncStorage.setItem('last_synced', time);
-        Alert.alert('Success', 'Dincharya synced to server.');
+        showCustomAlert('Success', 'Dincharya synced to server.');
       }
     } catch (error) {
       console.error('Sync failed:', error);
-      Alert.alert('Sync Failed', 'Could not sync with server. Will try again later.');
+      showCustomAlert('Sync Failed', 'Could not sync with server. Will try again later.');
     } finally {
       setIsSyncing(false);
     }
@@ -215,23 +296,29 @@ export default function DincharyaScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Calendar Day Row */}
+        {/* Month Calendar Grid View */}
         <View style={styles.calendarContainer}>
-          {weekDays.map((wd) => {
-            const isSelected = wd.dateStr === selectedDate;
-            return (
-              <TouchableOpacity
-                key={wd.dateStr}
-                style={[styles.calendarDayBox, isSelected && styles.calendarDayBoxSelected]}
-                onPress={() => setSelectedDate(wd.dateStr)}
-              >
-                <Text style={[styles.dayNameText, isSelected && styles.dayNameTextSelected]}>{wd.dayName}</Text>
-                <Text style={[styles.dayNumText, isSelected && styles.dayNumTextSelected]}>{wd.dayNum}</Text>
-                {/* Active completion dot indicator under date */}
-                <View style={[styles.dotIndicator, wd.completed ? styles.dotCompleted : styles.dotEmpty]} />
-              </TouchableOpacity>
-            );
-          })}
+          <View style={styles.calendarHeaderRow}>
+            <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.calendarNavBtn}>
+              <FontAwesome5 name="chevron-left" size={12} color="#EA580C" />
+            </TouchableOpacity>
+            <Text style={styles.calendarMonthTitle}>
+              {new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Text>
+            <TouchableOpacity onPress={() => changeMonth(1)} style={styles.calendarNavBtn}>
+              <FontAwesome5 name="chevron-right" size={12} color="#EA580C" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.weekdayHeadersRow}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
+              <Text key={idx} style={styles.weekdayHeaderCell}>{day}</Text>
+            ))}
+          </View>
+
+          <View style={styles.calendarGrid}>
+            {renderCalendarCells()}
+          </View>
         </View>
 
         {/* Progress circular indicator card */}
@@ -264,31 +351,69 @@ export default function DincharyaScreen() {
         {/* Tasks Section */}
         <View style={styles.tasksHeader}>
           <Text style={styles.tasksSectionTitle}>TASKS</Text>
-          <TouchableOpacity style={styles.btnAddTask} onPress={() => setIsAddModalOpen(true)}>
-            <Text style={styles.btnAddTaskText}>+ Add</Text>
-          </TouchableOpacity>
+          {selectedDate === new Date().toISOString().split('T')[0] && (
+            <TouchableOpacity style={styles.btnAddTask} onPress={() => setIsAddModalOpen(true)}>
+              <Text style={styles.btnAddTaskText}>+ Add</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Tasks List */}
         <View style={styles.listContainer}>
-          {tasks.map(task => (
-            <TouchableOpacity
-              key={task.id}
-              style={[styles.taskItem, task.completed && styles.taskItemCompleted]}
-              onPress={() => toggleTask(task.id)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.iconContainer, task.completed && styles.iconContainerCompleted]}>
-                <FontAwesome5 name={task.icon} size={15} color={task.completed ? "#FFFFFF" : "#EA580C"} />
-              </View>
-              <Text style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}>
-                {task.title}
-              </Text>
-              <View style={[styles.checkbox, task.completed && styles.checkboxCompleted]}>
-                {task.completed && <FontAwesome5 name="check" size={10} color="#FFFFFF" />}
-              </View>
-            </TouchableOpacity>
-          ))}
+          {tasks.length === 0 ? (
+            <View style={styles.emptyTasksContainer}>
+              <FontAwesome5 name="clipboard" size={26} color="#94A3B8" style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyTasksTitle}>No routines defined</Text>
+              <Text style={styles.emptyTasksDesc}>Add daily habits like snan, meditation, or scripture study to start building your routine.</Text>
+            </View>
+          ) : (
+            tasks.map(task => (
+              <TouchableOpacity
+                key={task.id}
+                style={[
+                  styles.taskItem, 
+                  task.completed && styles.taskItemCompleted,
+                  task.keystone && styles.keystoneTaskItem
+                ]}
+                onPress={() => toggleTask(task.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.taskLeftRow}>
+                  <View style={[
+                    styles.iconContainer, 
+                    task.completed && styles.iconContainerCompleted,
+                    task.keystone && styles.keystoneIconContainer
+                  ]}>
+                    <FontAwesome5 name={task.icon} size={14} color={task.completed ? "#FFFFFF" : task.keystone ? "#EA580C" : "#64748B"} />
+                  </View>
+                  
+                  <View style={styles.taskTextColumn}>
+                    <View style={styles.taskTitleRow}>
+                      <Text style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}>
+                        {task.title}
+                      </Text>
+                      {task.keystone && (
+                        <View style={styles.keystoneBadge}>
+                          <FontAwesome5 name="shield-alt" size={8} color="#EA580C" />
+                          <Text style={styles.keystoneBadgeText}>KEYSTONE</Text>
+                        </View>
+                      )}
+                    </View>
+                    
+                    {task.desc && (
+                      <Text style={[styles.taskDescText, task.completed && styles.taskDescTextCompleted]}>
+                        {task.desc}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                <View style={[styles.checkbox, task.completed && styles.checkboxCompleted]}>
+                  {task.completed && <FontAwesome5 name="check" size={9} color="#FFFFFF" />}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         {lastSynced && (
@@ -345,6 +470,13 @@ export default function DincharyaScreen() {
         </View>
       </Modal>
 
+      <CustomAlert 
+        visible={alertVisible} 
+        title={alertTitle} 
+        message={alertMessage} 
+        onClose={() => setAlertVisible(false)} 
+      />
+
     </SafeAreaView>
   );
 }
@@ -387,55 +519,123 @@ const styles = StyleSheet.create({
     borderColor: '#FFEDD5',
   },
   calendarContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 12,
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     marginBottom: 20,
   },
-  calendarDayBox: {
-    flex: 1,
+  calendarHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginHorizontal: 2,
+    marginBottom: 16,
   },
-  calendarDayBoxSelected: {
+  calendarMonthTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  calendarNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  weekdayHeadersRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 6,
+  },
+  weekdayHeaderCell: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+  calendarCell: {
+    width: '14.28%',
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 10,
+    marginVertical: 2,
+    position: 'relative',
+  },
+  calendarCellSelected: {
     backgroundColor: '#FFF7ED',
     borderWidth: 1,
     borderColor: '#FFEDD5',
   },
-  dayNameText: {
-    fontSize: 11,
-    color: '#94A3B8',
+  calendarCellToday: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  calendarCellEmpty: {
+    width: '14.28%',
+    height: 40,
+  },
+  calendarCellText: {
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 6,
-  },
-  dayNameTextSelected: {
-    color: '#EA580C',
-  },
-  dayNumText: {
-    fontSize: 15,
     color: '#475569',
-    fontWeight: '700',
-    marginBottom: 6,
   },
-  dayNumTextSelected: {
+  calendarCellTextSelected: {
     color: '#EA580C',
+    fontWeight: '700',
   },
-  dotIndicator: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+  calendarCellTextToday: {
+    color: '#0F172A',
+    fontWeight: '700',
   },
-  dotCompleted: {
+  cellDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    position: 'absolute',
+    bottom: 4,
+  },
+  cellDotCompleted: {
     backgroundColor: '#EA580C',
   },
-  dotEmpty: {
-    backgroundColor: '#E2E8F0',
+  cellDotEmpty: {
+    backgroundColor: 'transparent',
+  },
+  emptyTasksContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 24,
+  },
+  emptyTasksTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  emptyTasksDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   progressCard: {
     flexDirection: 'row',
@@ -536,7 +736,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EA580C',
   },
   taskTitle: {
-    flex: 1,
     fontSize: 15,
     fontWeight: '600',
     color: '#1E293B',
@@ -544,6 +743,52 @@ const styles = StyleSheet.create({
   taskTitleCompleted: {
     color: '#94A3B8',
     textDecorationLine: 'line-through',
+  },
+  taskLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  taskTextColumn: {
+    flex: 1,
+    gap: 2,
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  keystoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEDD5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  keystoneBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#EA580C',
+  },
+  taskDescText: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  taskDescTextCompleted: {
+    color: '#CBD5E1',
+    textDecorationLine: 'line-through',
+  },
+  keystoneTaskItem: {
+    borderColor: '#FDBA74',
+    borderLeftWidth: 4,
+  },
+  keystoneIconContainer: {
+    backgroundColor: '#FFEDD5',
   },
   checkbox: {
     width: 22,

@@ -1,18 +1,22 @@
 {
   "expo": {
     "name": "sanatanbrahmacharya-mobile",
-    "slug": "sanatanbrahmacharya-mobile",
+    "slug": "bramcharya",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "scheme": "sanatanbrahmacharyamobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/logo.png"
+      "icon": "./assets/images/logo.png",
+      "bundleIdentifier": "com.sanatan.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/images/logo.png",
         "backgroundImage": "./assets/images/logo.png",
         "monochromeImage": "./assets/images/logo.png"
@@ -29,10 +33,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#0F172A",
+          "image": "./assets/images/logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
           "android": {
             "image": "./assets/images/logo.png",
-            "imageWidth": 200
+            "imageWidth": 200,
+            "resizeMode": "contain"
           }
         }
       ]
@@ -40,6 +48,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "61b9734a-02c2-48f7-b9d3-18d7635bfa58"
+      }
+    },
+    "owner": "niteshsguptas-team"
   }
 }

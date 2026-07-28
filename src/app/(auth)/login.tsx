@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../utils/api';
 import CustomAlert from '../../components/CustomAlert';
 
@@ -66,121 +67,123 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        
-        {/* Logo / Heading */}
-        <View style={styles.headerContainer}>
-          <View style={styles.iconWrapper}>
-             <FontAwesome5 name="om" size={32} color="#FFFFFF" />
-          </View>
-          <Text style={styles.title}>Brahmacharya</Text>
-          <Text style={styles.subtitle}>Your companion on the path of self-mastery</Text>
-        </View>
-
-        {/* Tab Selector */}
-        <View style={styles.tabSelectorContainer}>
-          <View style={[styles.tabButton, styles.activeTabButton]}>
-            <Text style={styles.activeTabButtonText}>Sign In</Text>
-          </View>
-          <TouchableOpacity 
-            style={[styles.tabButton, styles.inactiveTabButton]}
-            onPress={() => router.replace('/(auth)/register')}
-          >
-            <Text style={styles.inactiveTabButtonText}>Register</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Login Form */}
-        <View style={styles.formContainer}>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           
-          {/* Username Field */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>USERNAME</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your username"
-                placeholderTextColor="#94A3B8"
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-              />
+          {/* Logo / Heading */}
+          <View style={styles.headerContainer}>
+            <View style={styles.iconWrapper}>
+               <FontAwesome5 name="om" size={32} color="#FFFFFF" />
             </View>
+            <Text style={styles.title}>Brahmacharya</Text>
+            <Text style={styles.subtitle}>Your companion on the path of self-mastery</Text>
           </View>
 
-          {/* Password Field */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>PASSWORD</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your password"
-                placeholderTextColor="#94A3B8"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                 <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={16} color="#94A3B8" />
+          {/* Tab Selector */}
+          <View style={styles.tabSelectorContainer}>
+            <View style={[styles.tabButton, styles.activeTabButton]}>
+              <Text style={styles.activeTabButtonText}>Sign In</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.tabButton, styles.inactiveTabButton]}
+              onPress={() => router.replace('/(auth)/register')}
+            >
+              <Text style={styles.inactiveTabButtonText}>Register</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Login Form */}
+          <View style={styles.formContainer}>
+            
+            {/* Username Field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>USERNAME</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your username"
+                  placeholderTextColor="#94A3B8"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            {/* Password Field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>PASSWORD</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#94A3B8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                   <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Remember Me */}
+            <View style={styles.rememberContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxRow} 
+                onPress={() => setRemember(!remember)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, remember && styles.checkboxChecked]}>
+                  {remember && <FontAwesome5 name="check" size={10} color="#FFFFFF" />}
+                </View>
+                <Text style={styles.rememberText}>Remember me</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Login Button */}
+            <TouchableOpacity 
+              style={[styles.button, loading && styles.buttonDisabled]} 
+              onPress={handleLogin} 
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>New here? </Text>
+              <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+                <Text style={styles.linkText}>Create an account</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Remember Me */}
-          <View style={styles.rememberContainer}>
-            <TouchableOpacity 
-              style={styles.checkboxRow} 
-              onPress={() => setRemember(!remember)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, remember && styles.checkboxChecked]}>
-                {remember && <FontAwesome5 name="check" size={10} color="#FFFFFF" />}
-              </View>
-              <Text style={styles.rememberText}>Remember me</Text>
-            </TouchableOpacity>
+          {/* Privacy Note */}
+          <View style={styles.privacyCard}>
+            <FontAwesome5 name="lock" size={16} color="#1E293B" style={styles.privacyIcon} />
+            <Text style={styles.privacyText}>
+              <Text style={styles.privacyBold}>Privacy first.</Text> No email or phone required. All data stays on your device only.
+            </Text>
           </View>
 
-          {/* Login Button */}
-          <TouchableOpacity 
-            style={[styles.button, loading && styles.buttonDisabled]} 
-            onPress={handleLogin} 
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>New here? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.linkText}>Create an account</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Privacy Note */}
-        <View style={styles.privacyCard}>
-          <FontAwesome5 name="lock" size={16} color="#1E293B" style={styles.privacyIcon} />
-          <Text style={styles.privacyText}>
-            <Text style={styles.privacyBold}>Privacy first.</Text> No email or phone required. All data stays on your device only.
-          </Text>
-        </View>
-
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
       <CustomAlert 
         visible={alertVisible} 
         title={alertTitle} 
         message={alertMessage} 
         onClose={() => setAlertVisible(false)} 
       />
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -193,7 +196,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-    paddingTop: 60,
+    paddingTop: 20,
   },
   headerContainer: {
     alignItems: 'center',

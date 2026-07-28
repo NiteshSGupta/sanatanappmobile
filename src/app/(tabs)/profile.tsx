@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Switch, ScrollView, Modal, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import CustomAlert from '../../components/CustomAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,13 +13,6 @@ export default function ProfileScreen() {
   
   // Stats states
   const [currentStreak, setCurrentStreak] = useState(0);
-  const [successRate, setSuccessRate] = useState(86);
-  const [totalDays, setTotalDays] = useState(0);
-  const [memberSince, setMemberSince] = useState('Jan 2025');
-
-  // Switch preferences
-  const [reminders, setReminders] = useState(true);
-  const [notifications, setNotifications] = useState(true);
 
   // Edit Profile States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -28,6 +22,24 @@ export default function ProfileScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
+  // Update Password States
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  // Custom Alert States
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+
+  const showCustomAlert = (title: string, message: string) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertVisible(true);
+  };
+
   const loadProfileData = async () => {
     try {
       const userData = await AsyncStorage.getItem('user');
@@ -35,10 +47,9 @@ export default function ProfileScreen() {
         setUser(JSON.parse(userData));
       }
 
-      // Calculate streak and total days
+      // Calculate streak
       const savedStart = await AsyncStorage.getItem('ojas_journey_start');
       let streakDays = 0;
-      let memberDateStr = 'Jan 2025';
       if (savedStart) {
         const start = new Date(savedStart);
         const now = new Date();
@@ -46,45 +57,21 @@ export default function ProfileScreen() {
         if (diff >= 0) {
           streakDays = Math.floor(diff / (1000 * 60 * 60 * 24));
         }
-        
-        // Format member since month/year (e.g. "Jul 2026")
-        memberDateStr = start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       }
       setCurrentStreak(streakDays);
-      setTotalDays(streakDays); // total days on path
-      setMemberSince(memberDateStr);
-
-      // Success rate estimation (scan last 7 days)
-      let totalTasks = 0;
-      let completedTasks = 0;
-      const today = new Date();
-      for (let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        const storedTasks = await AsyncStorage.getItem(`dincharya_${dateStr}`);
-        if (storedTasks) {
-          const tasks = JSON.parse(storedTasks);
-          totalTasks += tasks.length;
-          completedTasks += tasks.filter((t: any) => t.completed).length;
-        }
-      }
-      if (totalTasks > 0) {
-        setSuccessRate(Math.round((completedTasks / totalTasks) * 100));
-      } else {
-        setSuccessRate(86); // default mock to look good
-      }
-
-      // Load user preferences
-      const savedReminders = await AsyncStorage.getItem('pref_reminders');
-      if (savedReminders !== null) setReminders(savedReminders === 'true');
-      
-      const savedNotifications = await AsyncStorage.getItem('pref_notifications');
-      if (savedNotifications !== null) setNotifications(savedNotifications === 'true');
 
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const getFormattedJoiningDate = () => {
+    if (!user || !user.created_at) return new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+    const d = new Date(user.created_at);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   useFocusEffect(
@@ -92,24 +79,6 @@ export default function ProfileScreen() {
       loadProfileData();
     }, [])
   );
-
-  const toggleReminders = async (val: boolean) => {
-    setReminders(val);
-    await AsyncStorage.setItem('pref_reminders', val.toString());
-  };
-
-  const toggleNotifications = async (val: boolean) => {
-    setNotifications(val);
-    await AsyncStorage.setItem('pref_notifications', val.toString());
-  };
-
-  const showAlert = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}: ${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
-  };
 
   const openEditModal = () => {
     setEditName(user?.name || '');
@@ -120,7 +89,7 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editAge.trim()) {
-      showAlert('Error', 'Please enter both your name and age.');
+      showCustomAlert('Error', 'Please enter both your name and age.');
       return;
     }
     
@@ -146,19 +115,66 @@ export default function ProfileScreen() {
           age: parseInt(editAge),
           gender: editGender,
           date: new Date().toISOString().split('T')[0],
-          device_info: Platform.OS === 'web' ? 'Web Browser' : 'React Native App',
+          device_info: 'React Native App',
         });
       }
       
       setIsEditModalOpen(false);
-      showAlert('Success', 'Account updated successfully.');
+      showCustomAlert('Success', 'Account updated successfully.');
     } catch (err) {
       console.error('Error saving profile details:', err);
       // Still close modal since AsyncStorage saved successfully
       setIsEditModalOpen(false);
-      showAlert('Success', 'Account details saved locally.');
+      showCustomAlert('Success', 'Account details saved locally.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      showCustomAlert('Error', 'Please fill in all fields.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      showCustomAlert('Error', 'New password and confirm password do not match.');
+      return;
+    }
+    setIsUpdatingPassword(true);
+    try {
+      const username = user?.username || user?.uuid;
+      if (username) {
+        const response = await api.post('/profile', {
+          uuid: username,
+          password: currentPassword.trim(),
+          new_password: newPassword.trim(),
+        });
+        
+        if (response.data.success) {
+          const updatedUser = {
+            ...user,
+            password: response.data.user.password || response.data.password || user.password,
+          };
+          await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+          setUser(updatedUser);
+          
+          setIsPasswordModalOpen(false);
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmNewPassword('');
+          showCustomAlert('Success', 'Password updated successfully on server.');
+        } else {
+          showCustomAlert('Error', response.data.message || 'Could not update password.');
+        }
+      } else {
+        showCustomAlert('Error', 'User profile not found.');
+      }
+    } catch (err: any) {
+      console.error('Password update failed:', err);
+      const errMsg = err.response?.data?.message || 'Current password incorrect or connection failure.';
+      showCustomAlert('Error', errMsg);
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -217,25 +233,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* 2x2 Stats Grid */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statBox}>
-            <Text style={styles.statValueText}>{currentStreak} days</Text>
-            <Text style={styles.statLabelText}>Current Streak</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValueText}>{successRate}%</Text>
-            <Text style={styles.statLabelText}>Success Rate</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValueText}>{totalDays}</Text>
-            <Text style={styles.statLabelText}>Total Days</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValueText}>{memberSince}</Text>
-            <Text style={styles.statLabelText}>Member Since</Text>
-          </View>
-        </View>
+
 
         {/* Privacy First Card */}
         <View style={styles.privacyCard}>
@@ -248,27 +246,12 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* Settings switches card */}
+        {/* Account Security Card */}
         <View style={styles.settingsCard}>
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>Daily Reminders</Text>
-            <Switch
-              value={reminders}
-              onValueChange={toggleReminders}
-              trackColor={{ false: '#CBD5E1', true: '#FED7AA' }}
-              thumbColor={reminders ? '#EA580C' : '#94A3B8'}
-            />
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>Notifications</Text>
-            <Switch
-              value={notifications}
-              onValueChange={toggleNotifications}
-              trackColor={{ false: '#CBD5E1', true: '#FED7AA' }}
-              thumbColor={notifications ? '#EA580C' : '#94A3B8'}
-            />
-          </View>
+          <TouchableOpacity style={styles.settingsRow} onPress={() => setIsPasswordModalOpen(true)}>
+            <Text style={styles.settingsLabel}>Update Password</Text>
+            <FontAwesome5 name="chevron-right" size={14} color="#94A3B8" />
+          </TouchableOpacity>
         </View>
 
         {/* Sign Out Button */}
@@ -343,6 +326,14 @@ export default function ProfileScreen() {
               </View>
             </View>
 
+            {/* Joining Date (Un-editable) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>JOINING DATE</Text>
+              <View style={[styles.textInput, styles.disabledInputCard]}>
+                <Text style={styles.disabledInputText}>{getFormattedJoiningDate()}</Text>
+              </View>
+            </View>
+
             {/* Save Button */}
             <TouchableOpacity style={styles.btnSave} onPress={handleSaveProfile} disabled={isSaving}>
               <Text style={styles.btnSaveText}>{isSaving ? 'Saving...' : 'Save Updates'}</Text>
@@ -371,6 +362,71 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Update Password Modal */}
+      <Modal visible={isPasswordModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Password</Text>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setIsPasswordModalOpen(false)}>
+                <FontAwesome5 name="times" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Current Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CURRENT PASSWORD</Text>
+              <TextInput
+                style={styles.textInput}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Enter current password"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry
+              />
+            </View>
+
+            {/* New Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>NEW PASSWORD</Text>
+              <TextInput
+                style={styles.textInput}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Enter new password"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry
+              />
+            </View>
+
+            {/* Confirm New Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CONFIRM NEW PASSWORD</Text>
+              <TextInput
+                style={styles.textInput}
+                value={confirmNewPassword}
+                onChangeText={setConfirmNewPassword}
+                placeholder="Confirm new password"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry
+              />
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity style={styles.btnSave} onPress={handleUpdatePassword} disabled={isUpdatingPassword}>
+              <Text style={styles.btnSaveText}>{isUpdatingPassword ? 'Updating...' : 'Update Password'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <CustomAlert 
+        visible={alertVisible} 
+        title={alertTitle} 
+        message={alertMessage} 
+        onClose={() => setAlertVisible(false)} 
+      />
 
     </SafeAreaView>
   );
@@ -701,5 +757,15 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  disabledInputCard: {
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  disabledInputText: {
+    color: '#64748B',
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

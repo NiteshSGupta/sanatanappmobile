@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Animated, Platform } from 'react-native';
-import NetInfo, { useNetInfo } from '@react-native-community/netinfo';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 interface InternetConnectionWrapperProps {
@@ -15,7 +15,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
   const [checking, setChecking] = useState<boolean>(false);
   
   // Animation for the pulsing offline icon
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
 
   // Run a ping check to verify true internet connectivity (e.g. DNS resolution/backhaul check)
   const verifyInternet = async () => {
@@ -47,7 +47,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
       } else {
         setIsInternetActive(false);
       }
-    } catch (error) {
+    } catch {
       setIsInternetActive(false);
     } finally {
       setChecking(false);
@@ -82,7 +82,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
         animation.stop();
       }
     };
-  }, [isInternetActive]);
+  }, [isInternetActive, pulseAnim]);
 
   // Listen to web online/offline events
   useEffect(() => {
@@ -93,6 +93,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
       if (typeof window !== 'undefined') {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsInternetActive(window.navigator.onLine);
       }
 
@@ -109,6 +110,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
   useEffect(() => {
     if (Platform.OS !== 'web') {
       if (netInfo.isConnected === false) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsInternetActive(false);
       } else if (netInfo.isConnected === true) {
         verifyInternet();

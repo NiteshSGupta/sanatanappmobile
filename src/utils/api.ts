@@ -1,10 +1,10 @@
-import axios from 'axios';
+import { create } from 'axios';
 
 // In development with Android emulator, use 10.0.2.2 to access localhost
 // Replace with your live URL in production (e.g., https://brahmacharyapath.com)
-export const API_BASE_URL = 'http://127.0.0.1:8000/api';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://brahmacharyapath.com/api';
 
-const api = axios.create({
+const api = create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',

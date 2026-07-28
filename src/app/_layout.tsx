@@ -3,6 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import InternetConnectionWrapper from '../components/InternetConnectionWrapper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 
 export default function RootLayout() {
@@ -54,11 +55,13 @@ export default function RootLayout() {
   }
 
   return (
-    <InternetConnectionWrapper>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
-    </InternetConnectionWrapper>
+    <SafeAreaProvider>
+      <InternetConnectionWrapper>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        </Stack>
+      </InternetConnectionWrapper>
+    </SafeAreaProvider>
   );
 }

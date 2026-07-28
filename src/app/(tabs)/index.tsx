@@ -10,9 +10,12 @@ import Animated, {
   useAnimatedStyle,
   withTiming, 
   useAnimatedProps,
-  Easing
+  Easing,
+  withRepeat
 } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
+import api from '../../utils/api';
+import CustomAlert from '../../components/CustomAlert';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -35,9 +38,43 @@ export default function JourneyScreen() {
   const [minutes, setMinutes] = useState('00');
   const [seconds, setSeconds] = useState('00');
   const [isRelapseModalOpen, setIsRelapseModalOpen] = useState(false);
-  const [relapseReason, setRelapseReason] = useState('');
   
+  const [targetGoalDays, setTargetGoalDays] = useState(90);
+
+  const [isJourneyActive, setIsJourneyActive] = useState(false);
+  const [startReason, setStartReason] = useState('');
+  
+  // Custom Alert States
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+
+  const showCustomAlert = (title: string, message: string) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertVisible(true);
+  };
+
+  // Modals
+  const [isStartChallengeModalOpen, setIsStartChallengeModalOpen] = useState(false);
+  const [isEditGoalModalOpen, setIsEditGoalModalOpen] = useState(false);
+  const [isGoalCompletedModalOpen, setIsGoalCompletedModalOpen] = useState(false);
+
+  // Modal Inputs
+  const [startGoalDays, setStartGoalDays] = useState(90);
+  const [startReasonInput, setStartReasonInput] = useState('');
+  const [editGoalDays, setEditGoalDays] = useState(90);
+  const [editReasonInput, setEditReasonInput] = useState('');
+
+  // Scientific Relapse States
+  const [relapseStep, setRelapseStep] = useState(1);
+  const [selectedTrigger, setSelectedTrigger] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedTimeOfDay, setSelectedTimeOfDay] = useState('');
+  const [relapseNotes, setRelapseNotes] = useState('');
+
   const progressOffset = useSharedValue(CIRCLE_CIRCUMFERENCE);
+  const glowValue = useSharedValue(1);
 
   const [isUrgeModalOpen, setIsUrgeModalOpen] = useState(false);
   const [isUrgeActive, setIsUrgeActive] = useState(false);
@@ -47,35 +84,115 @@ export default function JourneyScreen() {
   const [urgeStageTimeLeft, setUrgeStageTimeLeft] = useState(4); // Default to inhale duration
   const urgeCircleScale = useSharedValue(1);
 
-  // League computation matching Figma layout
+  const openRelapseModal = () => {
+    setIsRelapseModalOpen(true);
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) setSelectedTimeOfDay('Morning');
+    else if (hour >= 12 && hour < 17) setSelectedTimeOfDay('Afternoon');
+    else if (hour >= 17 && hour < 21) setSelectedTimeOfDay('Evening');
+    else setSelectedTimeOfDay('Late Night');
+  };
+
+  // League computation matching Figma layout with science details
   const getLeagueData = useCallback((currentDays: number) => {
     if (currentDays < 7) {
-      return { current: 'Shishya', next: 'Sadhaka', nextDaysReq: 7, icon: 'seedling' };
+      return { 
+        current: 'Shishya (Seeker)', 
+        next: 'Sadhaka', 
+        nextDaysReq: 7, 
+        icon: 'seedling',
+        stage: 'Acute Withdrawal',
+        energy: 'Virya (Physical Energy)'
+      };
     } else if (currentDays < 30) {
-      return { current: 'Sadhaka', next: 'Tapasvi', nextDaysReq: 30, icon: 'leaf' };
+      return { 
+        current: 'Sadhaka (Practitioner)', 
+        next: 'Tapasvi', 
+        nextDaysReq: 30, 
+        icon: 'leaf',
+        stage: 'Neuroplastic Reset',
+        energy: 'Prana (Vitality)'
+      };
     } else if (currentDays < 90) {
-      return { current: 'Tapasvi', next: 'Brahmacharya', nextDaysReq: 90, icon: 'fire' };
+      return { 
+        current: 'Tapasvi (Disciplined)', 
+        next: 'Brahmacharya', 
+        nextDaysReq: 90, 
+        icon: 'fire',
+        stage: 'Dopamine Reboot',
+        energy: 'Ojas (Mental Clarity)'
+      };
     } else if (currentDays < 365) {
-      return { current: 'Brahmacharya', next: 'Maharishi', nextDaysReq: 365, icon: 'shield-alt' };
+      return { 
+        current: 'Brahmacharya (Master)', 
+        next: 'Maharishi', 
+        nextDaysReq: 365, 
+        icon: 'shield-alt',
+        stage: 'Semen Transmutation',
+        energy: 'Tejas (Radiance)'
+      };
     } else {
-      return { current: 'Maharishi', next: 'None', nextDaysReq: 0, icon: 'om' };
+      return { 
+        current: 'Maharishi (Enlightened)', 
+        next: 'None', 
+        nextDaysReq: 0, 
+        icon: 'om',
+        stage: 'Identity Restructured',
+        energy: 'Atman (Spiritual Mastery)'
+      };
     }
   }, []);
 
   const loadJourney = async () => {
     try {
       const userData = await AsyncStorage.getItem('user');
+      let parsedUser: any = null;
       if (userData) {
-        setUser(JSON.parse(userData));
+        parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
       }
+      
+      const activeVal = await AsyncStorage.getItem('ojas_journey_active');
+      const isActive = activeVal === 'true';
+      setIsJourneyActive(isActive);
+
       const savedStart = await AsyncStorage.getItem('ojas_journey_start');
-      if (savedStart) {
+      if (savedStart && isActive) {
         setJourneyStart(new Date(savedStart));
       } else {
-        // If not started, default to now or don't set
+        setJourneyStart(null);
+      }
+
+      const savedGoal = await AsyncStorage.getItem('ojas_target_goal_days');
+      if (savedGoal) {
+        setTargetGoalDays(parseInt(savedGoal));
+      } else if (parsedUser && parsedUser.target_goal_days) {
+        setTargetGoalDays(parsedUser.target_goal_days);
+        await AsyncStorage.setItem('ojas_target_goal_days', parsedUser.target_goal_days.toString());
+      } else {
+        setTargetGoalDays(90);
+      }
+
+      const reason = await AsyncStorage.getItem('ojas_goal_start_reason');
+      if (reason) {
+        setStartReason(reason);
+      } else if (parsedUser && parsedUser.start_reason) {
+        setStartReason(parsedUser.start_reason);
+        await AsyncStorage.setItem('ojas_goal_start_reason', parsedUser.start_reason);
+      }
+
+      // Check for completion
+      if (isActive && savedStart) {
+        const start = new Date(savedStart);
         const now = new Date();
-        setJourneyStart(now);
-        await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
+        const diff = now.getTime() - start.getTime();
+        if (diff >= 0) {
+          const calculatedDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const goalDaysNum = parseInt(savedGoal || '90');
+          if (calculatedDays >= goalDaysNum) {
+            setIsGoalCompletedModalOpen(true);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
@@ -89,8 +206,27 @@ export default function JourneyScreen() {
   );
 
   useEffect(() => {
+    if (!isJourneyActive) {
+      glowValue.value = withRepeat(
+        withTiming(0.6, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    } else {
+      glowValue.value = 1;
+    }
+  }, [isJourneyActive, glowValue]);
+
+  const animatedGlowStyle = useAnimatedStyle(() => {
+    return {
+      opacity: glowValue.value,
+      transform: [{ scale: withTiming(isJourneyActive ? 1 : 1 + (1 - glowValue.value) * 0.04) }]
+    };
+  });
+
+  useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (journeyStart) {
+    if (journeyStart && isJourneyActive) {
       interval = setInterval(() => {
         const now = new Date();
         const diff = now.getTime() - journeyStart.getTime();
@@ -105,23 +241,28 @@ export default function JourneyScreen() {
           setMinutes(m.toString().padStart(2, '0'));
           setSeconds(s.toString().padStart(2, '0'));
 
-          // Calculate progress percentage inside current league
-          const leagueData = getLeagueData(d);
-          const percent = leagueData.nextDaysReq > 0
-            ? Math.min((d / leagueData.nextDaysReq) * 100, 100)
-            : 100;
-          
-          // Maps progress percentage to the 3/4 circle arc (GAUGE_SPAN)
-          const fillPercentage = (percent / 100) * GAUGE_SPAN;
+          // Scale circle gauge progress relative to active goal days
+          const targetPercent = Math.min((d / targetGoalDays) * 100, 100);
+          const fillPercentage = (targetPercent / 100) * GAUGE_SPAN;
           const offset = CIRCLE_CIRCUMFERENCE - fillPercentage * CIRCLE_CIRCUMFERENCE;
           progressOffset.value = withTiming(offset, { duration: 1000, easing: Easing.out(Easing.ease) });
+
+          // Live Goal check
+          if (d >= targetGoalDays) {
+            setIsGoalCompletedModalOpen(true);
+          }
         }
       }, 1000);
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDays(0);
+      setHours('00');
+      setMinutes('00');
+      setSeconds('00');
       progressOffset.value = CIRCLE_CIRCUMFERENCE;
     }
     return () => clearInterval(interval);
-  }, [journeyStart, progressOffset, getLeagueData]);
+  }, [journeyStart, isJourneyActive, progressOffset, targetGoalDays]);
 
   const animatedCircleProps = useAnimatedProps(() => {
     return {
@@ -129,16 +270,192 @@ export default function JourneyScreen() {
     };
   });
 
+  const syncGoalAndRelapses = async (updatedGoal?: number, updatedRelapses?: any[]) => {
+    try {
+      const userData = await AsyncStorage.getItem('user');
+      if (!userData) return;
+      const parsedUser = JSON.parse(userData);
+      
+      const goal = updatedGoal !== undefined ? updatedGoal : targetGoalDays;
+      
+      let relapsesToSend = updatedRelapses;
+      if (!relapsesToSend) {
+        const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
+        relapsesToSend = storedRelapses ? JSON.parse(storedRelapses) : [];
+      }
+
+      await api.post('/sync', {
+        uuid: parsedUser.username,
+        date: new Date().toISOString().split('T')[0],
+        target_goal_days: goal,
+        relapses: relapsesToSend,
+        device_info: 'React Native App',
+      });
+    } catch (e) {
+      console.error('Error syncing goals/relapses with server:', e);
+    }
+  };
+
+  const handleStartChallenge = async () => {
+    if (!startReasonInput.trim()) {
+      showCustomAlert('Intention Required', 'Please write a brief reason for starting this reboot cycle to help program your prefrontal cortex.');
+      return;
+    }
+    try {
+      const now = new Date();
+      setIsJourneyActive(true);
+      setJourneyStart(now);
+      setTargetGoalDays(startGoalDays);
+      setStartReason(startReasonInput);
+
+      await AsyncStorage.setItem('ojas_journey_active', 'true');
+      await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
+      await AsyncStorage.setItem('ojas_target_goal_days', startGoalDays.toString());
+      await AsyncStorage.setItem('ojas_goal_start_reason', startReasonInput);
+
+      setIsStartChallengeModalOpen(false);
+
+      if (user && user.username) {
+        await api.post('/sync', {
+          uuid: user.username,
+          date: now.toISOString().split('T')[0],
+          target_goal_days: startGoalDays,
+          journey_status: 'active',
+          active_goal_start_at: now.toISOString(),
+          start_reason: startReasonInput,
+          device_info: 'React Native App',
+        });
+      }
+      
+      showCustomAlert('Challenge Initiated! 🛡️', 'Your reboot cycle has begun. Focus on today\'s Dincharya tasks.');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const openEditGoalModal = () => {
+    setEditGoalDays(targetGoalDays);
+    setEditReasonInput(startReason);
+    setIsEditGoalModalOpen(true);
+  };
+
+  const handleEditGoalSave = async () => {
+    if (!editReasonInput.trim()) {
+      showCustomAlert('Intention Required', 'Please provide a reason/intention.');
+      return;
+    }
+    try {
+      setTargetGoalDays(editGoalDays);
+      setStartReason(editReasonInput);
+
+      await AsyncStorage.setItem('ojas_target_goal_days', editGoalDays.toString());
+      await AsyncStorage.setItem('ojas_goal_start_reason', editReasonInput);
+
+      setIsEditGoalModalOpen(false);
+
+      if (user && user.username) {
+        await api.post('/sync', {
+          uuid: user.username,
+          date: new Date().toISOString().split('T')[0],
+          target_goal_days: editGoalDays,
+          journey_status: 'active',
+          active_goal_start_at: journeyStart ? journeyStart.toISOString() : null,
+          start_reason: editReasonInput,
+          device_info: 'React Native App',
+        });
+      }
+
+      showCustomAlert('Goal Updated', 'Your goal parameters have been successfully updated.');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const claimVictory = async () => {
+    try {
+      setIsGoalCompletedModalOpen(false);
+      
+      // Move to history
+      const storedHistory = await AsyncStorage.getItem('ojas_goals_history');
+      const history = storedHistory ? JSON.parse(storedHistory) : [];
+      
+      const newArchivedGoal = {
+        id: Date.now().toString(),
+        target_days: targetGoalDays,
+        start_date: journeyStart ? journeyStart.toISOString() : new Date().toISOString(),
+        completion_date: new Date().toISOString(),
+        start_reason: startReason,
+        status: 'completed',
+      };
+      
+      const updatedHistory = [...history, newArchivedGoal];
+      await AsyncStorage.setItem('ojas_goals_history', JSON.stringify(updatedHistory));
+      
+      // Clear active states
+      setIsJourneyActive(false);
+      setJourneyStart(null);
+      setDays(0);
+      setHours('00');
+      setMinutes('00');
+      setSeconds('00');
+      
+      await AsyncStorage.setItem('ojas_journey_active', 'false');
+      await AsyncStorage.removeItem('ojas_journey_start');
+      await AsyncStorage.removeItem('ojas_goal_start_reason');
+      
+      // Reset active relapse list
+      await AsyncStorage.setItem('ojas_relapses', JSON.stringify([]));
+      
+      // Clear all Dincharya history for active cycle to start clean
+      const keys = await AsyncStorage.getAllKeys();
+      const dincharyaKeys = keys.filter(k => k.startsWith('dincharya_'));
+      if (dincharyaKeys.length > 0) {
+        await AsyncStorage.multiRemove(dincharyaKeys);
+      }
+      
+      // Sync to server
+      if (user && user.username) {
+        await api.post('/sync', {
+          uuid: user.username,
+          date: new Date().toISOString().split('T')[0],
+          target_goal_days: 90,
+          journey_status: 'inactive',
+          active_goal_start_at: null,
+          start_reason: null,
+          goals_history: updatedHistory,
+          relapses: []
+        });
+      }
+      
+      showCustomAlert('Congratulations! 🎉', 'Victory archived. Start your next phase when ready.');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const confirmRelapse = async () => {
     const now = new Date();
+    const trigger = selectedTrigger || 'No trigger specified';
+    const location = selectedLocation || 'No location specified';
+    const timeOfDay = selectedTimeOfDay || 'No time specified';
+    const notes = relapseNotes.trim() || 'No notes specified';
+
     try {
       const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
       const relapses = storedRelapses ? JSON.parse(storedRelapses) : [];
-      relapses.push({
+      const newRelapse = {
         date: now.toISOString(),
-        reason: relapseReason.trim() || 'No reason specified',
-      });
+        trigger_type: trigger,
+        location: location,
+        time_of_day: timeOfDay,
+        notes: notes,
+        reason: trigger,
+      };
+      relapses.push(newRelapse);
       await AsyncStorage.setItem('ojas_relapses', JSON.stringify(relapses));
+      
+      // Sync to backend
+      await syncGoalAndRelapses(targetGoalDays, relapses);
     } catch (e) {
       console.error('Error saving relapse:', e);
     }
@@ -146,7 +463,13 @@ export default function JourneyScreen() {
     setJourneyStart(now);
     await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
     setIsRelapseModalOpen(false);
-    setRelapseReason('');
+    
+    // Reset state
+    setSelectedTrigger('');
+    setSelectedLocation('');
+    setSelectedTimeOfDay('');
+    setRelapseNotes('');
+    setRelapseStep(1);
   };
 
   // Urge Surfer Timer and Breathing Logic
@@ -226,7 +549,6 @@ export default function JourneyScreen() {
 
 
   const league = getLeagueData(days);
-  const nextLeagueText = league.next !== 'None' ? `Next: 🛡️ ${league.next}` : 'Ultimate Level achieved!';
   const daysRemainingText = league.nextDaysReq > 0 ? `${league.nextDaysReq - days} days away` : 'Max tier';
   const progressPercent = league.nextDaysReq > 0 ? Math.min((days / league.nextDaysReq) * 100, 100) : 100;
 
@@ -275,8 +597,23 @@ export default function JourneyScreen() {
 
             {/* Inner text */}
             <View style={styles.circleCenter}>
-              <Text style={styles.daysText}>{days}</Text>
-              <Text style={styles.daysLabel}>Days</Text>
+              {!isJourneyActive ? (
+                <Animated.View style={animatedGlowStyle}>
+                  <TouchableOpacity style={styles.startChallengeBtn} onPress={() => setIsStartChallengeModalOpen(true)}>
+                    <Text style={styles.startBtnGlowText}>START</Text>
+                    <Text style={styles.startBtnSubText}>CHALLENGE</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              ) : (
+                <>
+                  <Text style={styles.daysText}>{days}</Text>
+                  <Text style={styles.daysLabel}>Days</Text>
+                  <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
+                    <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
+                    <Text style={styles.goalPillText}>Goal: {targetGoalDays}d</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
 
@@ -304,7 +641,7 @@ export default function JourneyScreen() {
               <FontAwesome5 name="fire" size={16} color="#FFFFFF" />
               <Text style={styles.btnEmergencyText}>Emergency</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnRelapse} onPress={() => setIsRelapseModalOpen(true)}>
+            <TouchableOpacity style={styles.btnRelapse} onPress={openRelapseModal}>
               <FontAwesome5 name="history" size={14} color="#0F172A" />
               <Text style={styles.btnRelapseText}>Relapsed</Text>
             </TouchableOpacity>
@@ -323,60 +660,366 @@ export default function JourneyScreen() {
         {/* Your League Card */}
         <View style={styles.leagueCard}>
           <View style={styles.leagueHeader}>
-            <View>
-              <Text style={styles.leagueTitle}>YOUR LEAGUE</Text>
-              <Text style={styles.activeLeagueText}>
-                <FontAwesome5 name={league.icon} size={16} color="#EA580C" /> {league.current}
-              </Text>
-            </View>
-            <View style={styles.leagueRight}>
-              <Text style={styles.nextLeagueText}>{nextLeagueText}</Text>
-              <Text style={styles.daysAwayText}>{daysRemainingText}</Text>
+            <View style={styles.leagueBadgeWrapper}>
+              <View style={styles.leagueBadgeIcon}>
+                <FontAwesome5 name={league.icon} size={22} color="#EA580C" />
+              </View>
+              <View>
+                <Text style={styles.leagueTitle}>ACTIVE REALM</Text>
+                <Text style={styles.activeLeagueText}>{league.current}</Text>
+              </View>
             </View>
           </View>
+
+          <View style={styles.leagueStageRow}>
+            <View style={styles.leagueStageCol}>
+              <Text style={styles.leagueSubLabel}>BIOLOGICAL STATE</Text>
+              <Text style={styles.leagueSubVal}>{league.stage}</Text>
+            </View>
+            <View style={styles.leagueStageCol}>
+              <Text style={styles.leagueSubLabel}>ENERGY LEVEL</Text>
+              <Text style={styles.leagueSubVal}>{league.energy}</Text>
+            </View>
+          </View>
+
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+          </View>
+
+          <View style={styles.leagueProgressLabels}>
+            <Text style={styles.progressMinLabel}>0d</Text>
+            <Text style={styles.progressNextLabel}>
+              {league.next !== 'None' ? `${daysRemainingText} to ${league.next}` : 'Ultimate Realm Unlocked'}
+            </Text>
+            <Text style={styles.progressMaxLabel}>{league.nextDaysReq > 0 ? `${league.nextDaysReq}d` : '∞'}</Text>
           </View>
         </View>
 
       </ScrollView>
 
-      {/* Relapse Reset Modal */}
+      {/* Scientific Stepped Relapse Reset Modal */}
       <Modal visible={isRelapseModalOpen} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalIconBg}>
-              <FontAwesome5 name="history" size={30} color="#EF4444" />
+              <FontAwesome5 name="biohazard" size={24} color="#EF4444" />
             </View>
-            <Text style={styles.modalTitle}>Reset Streak?</Text>
-            <Text style={styles.modalDesc}>
-              Relapses happen on the path to mastery. Acknowledge it, learn from it, and begin again. Are you sure you want to reset your streak?
+            <Text style={styles.modalTitle}>Reflective Reboot</Text>
+            
+            {/* Step Indicators */}
+            <View style={styles.stepIndicator}>
+              <View style={[styles.stepDot, relapseStep >= 1 && styles.stepDotActive]} />
+              <View style={[styles.stepDot, relapseStep >= 2 && styles.stepDotActive]} />
+              <View style={[styles.stepDot, relapseStep >= 3 && styles.stepDotActive]} />
+            </View>
+
+            {relapseStep === 1 && (
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                <Text style={styles.modalTitleLeft}>Step 1: What triggered this?</Text>
+                <Text style={styles.modalDesc}>Identify the stimulus. Understanding triggers is key to neuroplastic rewiring.</Text>
+                <View style={styles.optionGrid}>
+                  {[
+                    { label: 'Boredom 🥱', val: 'Boredom' },
+                    { label: 'Loneliness 👤', val: 'Loneliness' },
+                    { label: 'Stress / Anxiety ⚡', val: 'Stress' },
+                    { label: 'Sensual Content 📱', val: 'Content' },
+                    { label: 'Late Night Awake 🌙', val: 'LateNight' },
+                    { label: 'Other 📝', val: 'Other' }
+                  ].map((t) => (
+                    <TouchableOpacity
+                      key={t.val}
+                      style={[styles.optionBtn, selectedTrigger === t.val && styles.optionBtnActive]}
+                      onPress={() => setSelectedTrigger(t.val)}
+                    >
+                      <Text style={[styles.optionBtnText, selectedTrigger === t.val && styles.optionBtnTextActive]}>
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.modalBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.modalBtnSecondary, { flex: 1 }]}
+                    onPress={() => {
+                      setIsRelapseModalOpen(false);
+                      setRelapseStep(1);
+                    }}
+                  >
+                    <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtnPrimary, { flex: 1, backgroundColor: selectedTrigger ? '#EA580C' : '#CBD5E1', marginBottom: 0 }]}
+                    disabled={!selectedTrigger}
+                    onPress={() => setRelapseStep(2)}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {relapseStep === 2 && (
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                <Text style={styles.modalTitleLeft}>Step 2: Where did it happen?</Text>
+                <Text style={styles.modalDesc}>Environmental triggers are strong. We will highlight high-risk locations.</Text>
+                <View style={styles.optionGrid}>
+                  {[
+                    { label: 'Bedroom 🛏️', val: 'Bedroom' },
+                    { label: 'Bathroom 🚿', val: 'Bathroom' },
+                    { label: 'Living Room 🛋️', val: 'LivingRoom' },
+                    { label: 'Study / Office 🖥️', val: 'Office' },
+                    { label: 'Other 📍', val: 'Other' }
+                  ].map((l) => (
+                    <TouchableOpacity
+                      key={l.val}
+                      style={[styles.optionBtn, selectedLocation === l.val && styles.optionBtnActive]}
+                      onPress={() => setSelectedLocation(l.val)}
+                    >
+                      <Text style={[styles.optionBtnText, selectedLocation === l.val && styles.optionBtnTextActive]}>
+                        {l.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.modalBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.modalBtnSecondary, { flex: 1 }]}
+                    onPress={() => setRelapseStep(1)}
+                  >
+                    <Text style={styles.modalBtnSecondaryText}>Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtnPrimary, { flex: 1, backgroundColor: selectedLocation ? '#EA580C' : '#CBD5E1', marginBottom: 0 }]}
+                    disabled={!selectedLocation}
+                    onPress={() => setRelapseStep(3)}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {relapseStep === 3 && (
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                <Text style={styles.modalTitleLeft}>Step 3: Acknowledge & Reflect</Text>
+                <Text style={styles.modalDesc}>Set the time of urge and write down one lesson so this slip becomes a step forward.</Text>
+                
+                <Text style={styles.relapseInputLabel}>TIME OF DAY</Text>
+                <View style={styles.timeRow}>
+                  {['Morning', 'Afternoon', 'Evening', 'Late Night'].map((tod) => (
+                    <TouchableOpacity
+                      key={tod}
+                      style={[styles.timeBtn, selectedTimeOfDay === tod && styles.timeBtnActive]}
+                      onPress={() => setSelectedTimeOfDay(tod)}
+                    >
+                      <Text style={[styles.timeBtnText, selectedTimeOfDay === tod && styles.timeBtnTextActive]}>
+                        {tod}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.relapseInputContainer}>
+                  <Text style={styles.relapseInputLabel}>REFLECTIVE LESSON (HOW TO AVOID NEXT TIME?)</Text>
+                  <TextInput
+                    style={styles.relapseTextInput}
+                    placeholder="e.g. Keep phone out of room at night..."
+                    placeholderTextColor="#94A3B8"
+                    value={relapseNotes}
+                    onChangeText={setRelapseNotes}
+                    multiline
+                  />
+                </View>
+
+                <View style={styles.modalBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.modalBtnSecondary, { flex: 1 }]}
+                    onPress={() => setRelapseStep(2)}
+                  >
+                    <Text style={styles.modalBtnSecondaryText}>Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtnPrimary, { flex: 1.3, backgroundColor: '#EF4444', marginBottom: 0 }]}
+                    onPress={confirmRelapse}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Reset Streak</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* Start Challenge Modal */}
+      <Modal visible={isStartChallengeModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalIconBg, { backgroundColor: '#FFF7ED' }]}>
+              <FontAwesome5 name="fire" size={22} color="#EA580C" />
+            </View>
+            <Text style={styles.goalModalTitle}>Start Challenge</Text>
+            <Text style={styles.goalModalSubtitle}>
+              Commit to a specific phase of rewiring. Milestones reduce cognitive friction.
             </Text>
 
-            {/* Relapse Reason Input */}
-            <View style={styles.relapseInputContainer}>
-              <Text style={styles.relapseInputLabel}>WHAT WAS THE TRIGGER / REASON? (OPTIONAL)</Text>
-              <TextInput
-                style={styles.relapseTextInput}
-                placeholder="e.g. boredom, late night browsing, stress..."
-                placeholderTextColor="#94A3B8"
-                value={relapseReason}
-                onChangeText={setRelapseReason}
-                multiline
-              />
+            <Text style={styles.relapseInputLabel}>SELECT TARGET DAYS</Text>
+            <View style={styles.presetGrid}>
+              {[
+                { label: '7 Days · Micro Reboot 🌱', val: 7 },
+                { label: '21 Days · Habit Formation 🌿', val: 21 },
+                { label: '90 Days · Dopamine Reboot 🔥', val: 90 },
+                { label: '365 Days · Complete Master 🛡️', val: 365 }
+              ].map((preset) => (
+                <TouchableOpacity
+                  key={preset.val}
+                  style={[styles.presetBtn, startGoalDays === preset.val && styles.presetBtnActive]}
+                  onPress={() => setStartGoalDays(preset.val)}
+                >
+                  <Text style={[styles.presetBtnText, startGoalDays === preset.val && styles.presetBtnTextActive]}>
+                    {preset.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <TouchableOpacity style={styles.modalBtnPrimary} onPress={confirmRelapse}>
-              <Text style={styles.modalBtnPrimaryText}>Yes, Reset Streak</Text>
-            </TouchableOpacity>
+            <Text style={styles.relapseInputLabel}>OR ENTER CUSTOM DAYS</Text>
+            <TextInput
+              style={[styles.customGoalInput, { width: '100%', marginBottom: 16 }]}
+              placeholder="e.g. 30"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={startGoalDays.toString()}
+              onChangeText={(t) => setStartGoalDays(parseInt(t.replace(/[^0-9]/g, '')) || 7)}
+            />
+
+            <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
+            <TextInput
+              style={[styles.relapseTextInput, { width: '100%', minHeight: 60, marginBottom: 20 }]}
+              placeholder="Why are you starting this path? (e.g. build clarity, master focus...)"
+              placeholderTextColor="#94A3B8"
+              value={startReasonInput}
+              onChangeText={setStartReasonInput}
+              multiline
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity 
+                style={[styles.modalBtnSecondary, { flex: 1 }]} 
+                onPress={() => {
+                  setIsStartChallengeModalOpen(false);
+                  setStartReasonInput('');
+                }}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]} 
+                onPress={handleStartChallenge}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Begin Challenge</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Goal Modal */}
+      <Modal visible={isEditGoalModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalIconBg, { backgroundColor: '#FFF7ED' }]}>
+              <FontAwesome5 name="edit" size={20} color="#EA580C" />
+            </View>
+            <Text style={styles.goalModalTitle}>Edit Goal Challenge</Text>
+            <Text style={styles.goalModalSubtitle}>
+              Modify your current target and starting resolve. Note: this will not reset your active streak.
+            </Text>
+
+            <Text style={styles.relapseInputLabel}>TARGET GOAL (DAYS)</Text>
+            <View style={styles.presetGrid}>
+              {[
+                { label: '7 Days', val: 7 },
+                { label: '21 Days', val: 21 },
+                { label: '90 Days', val: 90 },
+                { label: '365 Days', val: 365 }
+              ].map((preset) => (
+                <TouchableOpacity
+                  key={preset.val}
+                  style={[styles.presetBtn, editGoalDays === preset.val && styles.presetBtnActive]}
+                  onPress={() => setEditGoalDays(preset.val)}
+                >
+                  <Text style={[styles.presetBtnText, editGoalDays === preset.val && styles.presetBtnTextActive]}>
+                    {preset.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={[styles.customGoalInput, { width: '100%', marginBottom: 16 }]}
+              placeholder="Custom days"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={editGoalDays.toString()}
+              onChangeText={(t) => setEditGoalDays(parseInt(t.replace(/[^0-9]/g, '')) || 7)}
+            />
+
+            <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
+            <TextInput
+              style={[styles.relapseTextInput, { width: '100%', minHeight: 60, marginBottom: 20 }]}
+              placeholder="Edit your start reason..."
+              placeholderTextColor="#94A3B8"
+              value={editReasonInput}
+              onChangeText={setEditReasonInput}
+              multiline
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity 
+                style={[styles.modalBtnSecondary, { flex: 1 }]} 
+                onPress={() => setIsEditGoalModalOpen(false)}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]} 
+                onPress={handleEditGoalSave}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Goal Completed Celebration Modal */}
+      <Modal visible={isGoalCompletedModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#EA580C', borderWidth: 2 }]}>
+            <View style={[styles.modalIconBg, { backgroundColor: '#FEF3C7' }]}>
+              <FontAwesome5 name="trophy" size={28} color="#D97706" />
+            </View>
+            <Text style={[styles.goalModalTitle, { color: '#B45309' }]}>Victory Achieved! 🏆</Text>
+            <Text style={styles.goalModalSubtitle}>
+              Congratulations! You have successfully completed your target of {targetGoalDays} days clean.
+            </Text>
+
+            <View style={styles.victoryCard}>
+              <Text style={styles.victoryLabel}>INTENTION MET</Text>
+              <Text style={styles.victoryText}>&quot;{startReason}&quot;</Text>
+            </View>
+
+            <Text style={styles.victoryNextPhaseText}>
+              Claiming your victory will archive this challenge into history and reset your active streak/dincharya/relapses.
+            </Text>
+
             <TouchableOpacity 
-              style={styles.modalBtnSecondary} 
-              onPress={() => {
-                setIsRelapseModalOpen(false);
-                setRelapseReason('');
-              }}
+              style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#D97706', marginBottom: 0 }]} 
+              onPress={claimVictory}
             >
-              <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              <Text style={styles.modalBtnPrimaryText}>Claim Victory & Restart</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -446,6 +1089,13 @@ export default function JourneyScreen() {
           </View>
         </View>
       </Modal>
+
+      <CustomAlert 
+        visible={alertVisible} 
+        title={alertTitle} 
+        message={alertMessage} 
+        onClose={() => setAlertVisible(false)} 
+      />
 
     </SafeAreaView>
   );
@@ -950,5 +1600,298 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  goalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEDD5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+    gap: 4,
+  },
+  goalPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EA580C',
+  },
+  goalModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  goalModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  presetGrid: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  presetBtn: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    width: '100%',
+  },
+  presetBtnActive: {
+    backgroundColor: '#FFEDD5',
+    borderColor: '#EA580C',
+  },
+  presetBtnText: {
+    color: '#334155',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  presetBtnTextActive: {
+    color: '#EA580C',
+  },
+  customGoalRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+    marginBottom: 20,
+  },
+  customGoalInput: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    height: 48,
+  },
+  customGoalBtn: {
+    backgroundColor: '#EA580C',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 48,
+  },
+  customGoalBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  stepIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+  stepDotActive: {
+    backgroundColor: '#EA580C',
+    width: 20,
+  },
+  modalTitleLeft: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0F172A',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  optionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: '100%',
+    gap: 10,
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  optionBtn: {
+    width: '48%',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  optionBtnActive: {
+    backgroundColor: '#FFEDD5',
+    borderColor: '#EA580C',
+  },
+  optionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  optionBtnTextActive: {
+    color: '#EA580C',
+    fontWeight: '700',
+  },
+  timeRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 6,
+    marginBottom: 16,
+  },
+  timeBtn: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  timeBtnActive: {
+    backgroundColor: '#FFEDD5',
+    borderColor: '#EA580C',
+  },
+  timeBtnText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  timeBtnTextActive: {
+    color: '#EA580C',
+    fontWeight: '700',
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+    marginTop: 10,
+  },
+  leagueBadgeWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  leagueBadgeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFEDD5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  leagueStageRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  leagueStageCol: {
+    flex: 1,
+  },
+  leagueSubLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  leagueSubVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  leagueProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  progressMinLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  progressNextLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EA580C',
+  },
+  progressMaxLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  startChallengeBtn: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#EA580C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 3,
+    borderColor: '#FFEDD5',
+  },
+  startBtnGlowText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1.5,
+  },
+  startBtnSubText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFEDD5',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  victoryCard: {
+    width: '100%',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  victoryLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  victoryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#78350F',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  victoryNextPhaseText: {
+    fontSize: 11,
+    color: '#92400E',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 20,
+    paddingHorizontal: 10,
   },
 });
