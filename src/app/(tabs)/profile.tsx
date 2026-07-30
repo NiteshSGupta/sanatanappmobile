@@ -200,11 +200,13 @@ export default function ProfileScreen() {
 
   // Get league badge details
   const getLeagueBadge = (days: number) => {
-    if (days < 7) return 'Shishya';
-    if (days < 30) return 'Sadhaka';
-    if (days < 90) return 'Tapasvi';
-    if (days < 365) return 'Brahmacharya';
-    return 'Maharishi';
+    if (days < 7) return 'Beginner';
+    if (days < 21) return 'Bronze';
+    if (days < 45) return 'Silver';
+    if (days < 90) return 'Gold';
+    if (days < 180) return 'Diamond';
+    if (days < 365) return 'Master';
+    return 'Brahmachari';
   };
 
   if (!user) return null;
@@ -222,7 +224,7 @@ export default function ProfileScreen() {
             <View style={styles.nameRow}>
               <Text style={styles.nameText}>{user.name}</Text>
               <TouchableOpacity style={styles.btnEditProfile} onPress={openEditModal}>
-                <FontAwesome5 name="cog" size={16} color="#64748B" />
+                <FontAwesome5 name="cog" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
             <Text style={styles.profileSubMetaText}>Age: {user.age} · Gender: {user.gender}</Text>

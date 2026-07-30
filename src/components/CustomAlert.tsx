@@ -10,6 +10,11 @@ interface CustomAlertProps {
 }
 
 export default function CustomAlert({ visible, title, message, onClose }: CustomAlertProps) {
+  const isSuccess = title.toLowerCase().includes('success');
+  const mainColor = isSuccess ? '#16a34a' : '#EA580C'; // green for success, orange for error/warning
+  const bgColor = isSuccess ? '#dcfce7' : '#FFF7ED';
+  const iconName = isSuccess ? 'check-circle' : 'exclamation-circle';
+
   return (
     <Modal
       visible={visible}
@@ -19,12 +24,12 @@ export default function CustomAlert({ visible, title, message, onClose }: Custom
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <View style={styles.iconWrapper}>
-            <FontAwesome5 name="exclamation-circle" size={20} color="#EA580C" />
+          <View style={[styles.iconWrapper, { backgroundColor: bgColor }]}>
+            <FontAwesome5 name={iconName} size={20} color={mainColor} />
           </View>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.title}>{title.replace(/^Success:\s*/i, '')}</Text>
           <Text style={styles.message}>{message}</Text>
-          <TouchableOpacity style={styles.button} onPress={onClose} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.button, { backgroundColor: mainColor, shadowColor: mainColor }]} onPress={onClose} activeOpacity={0.85}>
             <Text style={styles.buttonText}>OK</Text>
           </TouchableOpacity>
         </View>
@@ -58,7 +63,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFF7ED', // warm light orange background
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -80,11 +84,9 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     height: 46,
-    backgroundColor: '#EA580C', // theme orange
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#EA580C',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,

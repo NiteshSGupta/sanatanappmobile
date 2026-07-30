@@ -15,9 +15,10 @@ interface DayStatus {
 
 export default function ReportsScreen() {
   const [currentStreak, setCurrentStreak] = useState(0);
+  const [challengeProgressDays, setChallengeProgressDays] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [successRate, setSuccessRate] = useState(86); // fallback default
-  const [activeTab, setActiveTab] = useState<'Week' | 'Month' | 'Year'>('Week');
+  const [activeTab, setActiveTab] = useState<'Challenges' | 'Discipline' | 'Recovery'>('Challenges');
   const [weeklyStatus, setWeeklyStatus] = useState<DayStatus[]>([]);
   const [relapses, setRelapses] = useState<any[]>([]);
   const [relapseStats, setRelapseStats] = useState({ week: 0, month: 0, year: 0 });
@@ -32,11 +33,12 @@ export default function ReportsScreen() {
 
   const loadReportData = async () => {
     try {
-      const activeVal = await AsyncStorage.getItem('ojas_journey_active');
+      const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
       if (!isActive) {
         setCurrentStreak(0);
+        setChallengeProgressDays(0);
         setSuccessRate(0);
         
         const savedBest = await AsyncStorage.getItem('ojas_best_streak');
@@ -61,18 +63,29 @@ export default function ReportsScreen() {
         return;
       }
 
-      // 1. Calculate Streak from journey start
-      const savedStart = await AsyncStorage.getItem('ojas_journey_start');
+      // 1. Calculate Master Streak and Challenge Progress
+      const savedStreakStart = await AsyncStorage.getItem('ojas_streak_start');
       let streakDays = 0;
-      const start = savedStart ? new Date(savedStart) : new Date();
-      if (savedStart) {
+      if (savedStreakStart) {
         const now = new Date();
-        const diff = now.getTime() - start.getTime();
+        const diff = now.getTime() - new Date(savedStreakStart).getTime();
         if (diff >= 0) {
           streakDays = Math.floor(diff / (1000 * 60 * 60 * 24));
         }
       }
       setCurrentStreak(streakDays);
+
+      const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
+      let cDays = 0;
+      const start = savedStart ? new Date(savedStart) : new Date();
+      if (savedStart) {
+        const now = new Date();
+        const diff = now.getTime() - start.getTime();
+        if (diff >= 0) {
+          cDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+        }
+      }
+      setChallengeProgressDays(cDays);
 
       // Best streak tracking
       const savedBest = await AsyncStorage.getItem('ojas_best_streak');
@@ -127,6 +140,14 @@ export default function ReportsScreen() {
           tCount = tasks.length;
           cCount = tasks.filter((t: any) => t.completed).length;
           completed = cCount > 0;
+        } else {
+          const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+          const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
+          const eCount = everydayTasksStr ? JSON.parse(everydayTasksStr).length : 0;
+          const oCount = onedayTasksStr ? JSON.parse(onedayTasksStr).length : 0;
+          tCount = eCount + oCount;
+          cCount = 0;
+          completed = false;
         }
 
         totalTasks += tCount;
@@ -157,7 +178,7 @@ export default function ReportsScreen() {
 
   const loadRelapseData = useCallback(async () => {
     try {
-      const activeVal = await AsyncStorage.getItem('ojas_journey_active');
+      const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
       if (!isActive) {
@@ -166,7 +187,7 @@ export default function ReportsScreen() {
         return;
       }
 
-      const savedStart = await AsyncStorage.getItem('ojas_journey_start');
+      const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
       const journeyStartObj = savedStart ? new Date(savedStart) : null;
 
       const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
@@ -223,7 +244,7 @@ export default function ReportsScreen() {
         setGoalsHistory([]);
       }
 
-      const activeVal = await AsyncStorage.getItem('ojas_journey_active');
+      const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
       if (!isActive) {
@@ -241,7 +262,7 @@ export default function ReportsScreen() {
         setTargetGoalDays(parseInt(savedGoal));
       }
 
-      const savedStart = await AsyncStorage.getItem('ojas_journey_start');
+      const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
       const journeyStartObj = savedStart ? new Date(savedStart) : null;
 
       const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
@@ -318,6 +339,14 @@ export default function ReportsScreen() {
             totalKeystones += keystones.length;
             completedKeystones += keystones.filter((t: any) => t.completed).length;
           }
+        } else {
+          const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+          const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
+          const eTasks = everydayTasksStr ? JSON.parse(everydayTasksStr) : [];
+          const oTasks = onedayTasksStr ? JSON.parse(onedayTasksStr) : [];
+          const combined = [...eTasks, ...oTasks];
+          const keystones = combined.filter((t: any) => t.keystone);
+          totalKeystones += keystones.length;
         }
       }
 
@@ -343,31 +372,23 @@ export default function ReportsScreen() {
 
   // League details for the League Journey section
   const LEAGUES = [
-    { name: 'Shishya', days: '0+ days', req: 0, icon: 'seedling' },
-    { name: 'Sadhaka', days: '7+ days', req: 7, icon: 'leaf' },
-    { name: 'Tapasvi', days: '30+ days', req: 30, icon: 'fire' },
-    { name: 'Brahmacharya', days: '90+ days', req: 90, icon: 'shield-alt' },
-    { name: 'Maharishi', days: '365+ days', req: 365, icon: 'om' },
+    { name: 'Beginner', days: '0+ days', req: 0, icon: 'seedling' },
+    { name: 'Bronze', days: '7+ days', req: 7, icon: 'medal' },
+    { name: 'Silver', days: '21+ days', req: 21, icon: 'shield-alt' },
+    { name: 'Gold', days: '45+ days', req: 45, icon: 'crown' },
+    { name: 'Diamond', days: '90+ days', req: 90, icon: 'gem' },
+    { name: 'Master', days: '180+ days', req: 180, icon: 'mountain' },
+    { name: 'Brahmachari', days: '365+ days', req: 365, icon: 'om' },
   ];
 
   // Helper to calculate progress for active league
   const getActiveLeagueProgress = (days: number) => {
-    if (days >= 30 && days < 90) {
-      // Tapasvi progress towards Brahmacharya (90)
-      const earned = days - 30;
-      const target = 90 - 30;
-      return Math.min((earned / target) * 100, 100);
-    }
-    if (days >= 7 && days < 30) {
-      // Sadhaka progress towards Tapasvi (30)
-      return Math.min(((days - 7) / 23) * 100, 100);
-    }
-    if (days < 7) {
-      return Math.min((days / 7) * 100, 100);
-    }
-    if (days >= 90 && days < 365) {
-      return Math.min(((days - 90) / 275) * 100, 100);
-    }
+    if (days >= 180 && days < 365) return Math.min(((days - 180) / 185) * 100, 100);
+    if (days >= 90 && days < 180) return Math.min(((days - 90) / 90) * 100, 100);
+    if (days >= 45 && days < 90) return Math.min(((days - 45) / 45) * 100, 100);
+    if (days >= 21 && days < 45) return Math.min(((days - 21) / 24) * 100, 100);
+    if (days >= 7 && days < 21) return Math.min(((days - 7) / 14) * 100, 100);
+    if (days < 7) return Math.min((days / 7) * 100, 100);
     return 100;
   };
 
@@ -396,32 +417,11 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        {/* Goal Days Progress Card */}
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>ACTIVE GOAL PROGRESS</Text>
-          <View style={styles.goalInfoRow}>
-            <View style={styles.goalInfoBlock}>
-              <Text style={styles.goalInfoVal}>{currentStreak} days</Text>
-              <Text style={styles.goalInfoLbl}>CURRENT STREAK</Text>
-            </View>
-            <View style={styles.goalInfoBlockRight}>
-              <Text style={styles.goalInfoVal}>{targetGoalDays} days</Text>
-              <Text style={styles.goalInfoLbl}>TARGET GOAL</Text>
-            </View>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${Math.min((currentStreak / targetGoalDays) * 100, 100)}%` }]} />
-          </View>
-          <Text style={styles.goalStatusText}>
-            {currentStreak >= targetGoalDays 
-              ? "🎉 Goal achieved! Set a new goal from the Home screen to continue rewiring your brain."
-              : `${targetGoalDays - currentStreak} days remaining to reboot your reward system.`}
-          </Text>
-        </View>
 
-        {/* Week / Month / Year Tab Switcher */}
+
+        {/* Challenges / Discipline / Recovery Tab Switcher */}
         <View style={styles.tabSwitcher}>
-          {(['Week', 'Month', 'Year'] as const).map((tab) => {
+          {(['Challenges', 'Discipline', 'Recovery'] as const).map((tab) => {
             const isSelected = activeTab === tab;
             return (
               <TouchableOpacity
@@ -438,7 +438,9 @@ export default function ReportsScreen() {
         </View>
 
         {/* This Week Section */}
-        <View style={styles.reportCard}>
+        {activeTab === 'Discipline' && (
+          <>
+            <View style={styles.reportCard}>
           <Text style={styles.cardTitle}>THIS WEEK</Text>
           
           {/* Weekday checkmark row */}
@@ -502,8 +504,10 @@ export default function ReportsScreen() {
             </Text>
           </View>
         </View>
+        </>)}
 
         {/* Relapse Report Card */}
+        {activeTab === 'Recovery' && (
         <View style={styles.reportCard}>
           <Text style={styles.cardTitle}>RELAPSE REPORT</Text>
           
@@ -600,8 +604,34 @@ export default function ReportsScreen() {
             </View>
           )}
         </View>
+        )}
 
         {/* League Journey Section */}
+        {activeTab === 'Challenges' && (
+          <>
+        {/* Goal Days Progress Card */}
+        <View style={styles.reportCard}>
+          <Text style={styles.cardTitle}>ACTIVE GOAL PROGRESS</Text>
+          <View style={styles.goalInfoRow}>
+            <View style={styles.goalInfoBlock}>
+              <Text style={styles.goalInfoVal}>{challengeProgressDays} days</Text>
+              <Text style={styles.goalInfoLbl}>CURRENT PROGRESS</Text>
+            </View>
+            <View style={styles.goalInfoBlockRight}>
+              <Text style={styles.goalInfoVal}>{targetGoalDays} days</Text>
+              <Text style={styles.goalInfoLbl}>TARGET GOAL</Text>
+            </View>
+          </View>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${Math.min((challengeProgressDays / targetGoalDays) * 100, 100)}%` }]} />
+          </View>
+          <Text style={styles.goalStatusText}>
+            {challengeProgressDays >= targetGoalDays 
+              ? "🎉 Goal achieved! Set a new goal from the Home screen to continue rewiring your brain."
+              : `${targetGoalDays - challengeProgressDays} days remaining to reboot your reward system.`}
+          </Text>
+        </View>
+
         <View style={styles.reportCard}>
           <Text style={styles.cardTitle}>LEAGUE JOURNEY</Text>
           
@@ -675,6 +705,7 @@ export default function ReportsScreen() {
             </View>
           )}
         </View>
+        </>)}
 
       </ScrollView>
     </SafeAreaView>

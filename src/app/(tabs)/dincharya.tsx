@@ -46,6 +46,15 @@ export default function DincharyaScreen() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskIcon, setNewTaskIcon] = useState('clipboard-list');
+  const [newTaskType, setNewTaskType] = useState<'everyday' | 'oneday'>('everyday');
+  
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [longPressedTask, setLongPressedTask] = useState<any>(null);
+
+  // Challenge context
+  const [challengeStart, setChallengeStart] = useState<Date | null>(null);
+  const [challengeEnd, setChallengeEnd] = useState<Date | null>(null);
+  const [isChallengeActive, setIsChallengeActive] = useState(false);
 
   // Custom Alert States
   const [alertVisible, setAlertVisible] = useState(false);
@@ -58,6 +67,17 @@ export default function DincharyaScreen() {
     setAlertVisible(true);
   };
 
+  const getDayState = (dateStr: string, active: boolean, start: Date | null, end: Date | null) => {
+    if (!active || !start || !end) return 'Past Day'; 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+    if (dateStr < startStr || dateStr > endStr) return 'Not Started';
+    if (dateStr > todayStr) return 'Future Day';
+    if (dateStr === todayStr) return 'Today';
+    return 'Past Day';
+  };
+
   // Month days list for the calendar
   const [monthDays, setMonthDays] = useState<any[]>(() => getMonthDaysList());
 
@@ -68,11 +88,40 @@ export default function DincharyaScreen() {
         setUser(JSON.parse(userData));
       }
 
+      // Load challenge constraints
+      const activeStr = await AsyncStorage.getItem('ojas_challenge_active');
+      const isActive = activeStr === 'true';
+      setIsChallengeActive(isActive);
+      
+      const startStr = await AsyncStorage.getItem('ojas_challenge_start');
+      const startD = startStr ? new Date(startStr) : null;
+      setChallengeStart(startD);
+
+      const targetDays = parseInt(await AsyncStorage.getItem('ojas_target_goal_days') || '90');
+      let endD = null;
+      if (startD) {
+        endD = new Date(startD);
+        endD.setDate(endD.getDate() + targetDays - 1);
+      }
+      setChallengeEnd(endD);
+
+      const state = getDayState(dateToLoad, isActive, startD, endD);
+
       const storedTasks = await AsyncStorage.getItem(`dincharya_${dateToLoad}`);
       if (storedTasks) {
         setTasks(JSON.parse(storedTasks));
       } else {
-        setTasks([]);
+        if (state !== 'Not Started') {
+          const everydayTasks = JSON.parse(await AsyncStorage.getItem('ojas_everyday_tasks') || '[]');
+          const onedayTasks = JSON.parse(await AsyncStorage.getItem(`ojas_oneday_tasks_${dateToLoad}`) || '[]');
+          const combined = [...everydayTasks, ...onedayTasks].map((t: any) => ({ ...t, completed: false }));
+          if (state === 'Today' || state === 'Past Day') {
+            await AsyncStorage.setItem(`dincharya_${dateToLoad}`, JSON.stringify(combined));
+          }
+          setTasks(combined);
+        } else {
+          setTasks([]);
+        }
       }
 
       const syncTime = await AsyncStorage.getItem('last_synced');
@@ -130,9 +179,9 @@ export default function DincharyaScreen() {
   };
 
   const toggleTask = async (id: string) => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (selectedDate !== todayStr) {
-      showCustomAlert('Mindfulness Check', 'You cannot change routines for past or future dates. Focus on today\'s habits in the present moment. 🙏');
+    const state = getDayState(selectedDate, isChallengeActive, challengeStart, challengeEnd);
+    if (state !== 'Today') {
+      showCustomAlert('Mindfulness Check', 'You can only update today\'s tasks. Historical or future days are read-only. 🙏');
       return;
     }
 
@@ -165,13 +214,25 @@ export default function DincharyaScreen() {
       icon: newTaskIcon,
       completed: false,
       keystone: false,
+      type: newTaskType,
     };
     const updatedTasks = [...tasks, newTask];
     setTasks(updatedTasks);
     try {
+      if (newTaskType === 'everyday') {
+        const everyday = JSON.parse(await AsyncStorage.getItem('ojas_everyday_tasks') || '[]');
+        everyday.push(newTask);
+        await AsyncStorage.setItem('ojas_everyday_tasks', JSON.stringify(everyday));
+      } else {
+        const oneday = JSON.parse(await AsyncStorage.getItem(`ojas_oneday_tasks_${selectedDate}`) || '[]');
+        oneday.push(newTask);
+        await AsyncStorage.setItem(`ojas_oneday_tasks_${selectedDate}`, JSON.stringify(oneday));
+      }
+
       await AsyncStorage.setItem(`dincharya_${selectedDate}`, JSON.stringify(updatedTasks));
       setIsAddModalOpen(false);
       setNewTaskTitle('');
+      setNewTaskType('everyday');
 
       // Update dots on calendar grid
       setMonthDays(prev => prev.map(wd => {
@@ -183,6 +244,45 @@ export default function DincharyaScreen() {
     } catch (e) {
       console.error('Error saving new task:', e);
     }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!longPressedTask) return;
+    const taskToDelete = longPressedTask;
+    const newTasks = tasks.filter(t => t.id !== taskToDelete.id);
+    setTasks(newTasks);
+    try {
+      await AsyncStorage.setItem(`dincharya_${selectedDate}`, JSON.stringify(newTasks));
+      if (taskToDelete.type === 'everyday') {
+        const everyday = JSON.parse(await AsyncStorage.getItem('ojas_everyday_tasks') || '[]');
+        const newEveryday = everyday.filter((t: any) => t.id !== taskToDelete.id);
+        await AsyncStorage.setItem('ojas_everyday_tasks', JSON.stringify(newEveryday));
+      } else {
+        const oneday = JSON.parse(await AsyncStorage.getItem(`ojas_oneday_tasks_${selectedDate}`) || '[]');
+        const newOneday = oneday.filter((t: any) => t.id !== taskToDelete.id);
+        await AsyncStorage.setItem(`ojas_oneday_tasks_${selectedDate}`, JSON.stringify(newOneday));
+      }
+      setIsActionModalOpen(false);
+      setLongPressedTask(null);
+      
+      // Update dot if tasks length zero
+      if (newTasks.length === 0) {
+        setMonthDays(prev => prev.map(wd => {
+          if (wd.dateStr === selectedDate) {
+            return { ...wd, completed: false };
+          }
+          return wd;
+        }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const onTaskLongPress = (task: any) => {
+    if (getDayState(selectedDate, isChallengeActive, challengeStart, challengeEnd) !== 'Today') return;
+    setLongPressedTask(task);
+    setIsActionModalOpen(true);
   };
 
   const renderCalendarCells = () => {
@@ -201,27 +301,36 @@ export default function DincharyaScreen() {
     monthDays.forEach((wd) => {
       const isSelected = wd.dateStr === selectedDate;
       const isToday = wd.dateStr === new Date().toISOString().split('T')[0];
+      const state = getDayState(wd.dateStr, isChallengeActive, challengeStart, challengeEnd);
+      const isNotStarted = state === 'Not Started';
+      const isFuture = state === 'Future Day';
       
       cells.push(
         <TouchableOpacity
           key={wd.dateStr}
+          disabled={isNotStarted}
           style={[
             styles.calendarCell, 
             isSelected && styles.calendarCellSelected,
-            isToday && !isSelected && styles.calendarCellToday
+            isToday && !isSelected && styles.calendarCellToday,
+            isNotStarted && { opacity: 0.3 }
           ]}
           onPress={() => setSelectedDate(wd.dateStr)}
         >
+          {isFuture && !isSelected && (
+            <FontAwesome5 name="lock" size={8} color="#94A3B8" style={{ position: 'absolute', top: 4, right: 4 }} />
+          )}
           <Text style={[
             styles.calendarCellText, 
             isSelected && styles.calendarCellTextSelected,
-            isToday && !isSelected && styles.calendarCellTextToday
+            isToday && !isSelected && styles.calendarCellTextToday,
+            isNotStarted && { color: '#94A3B8' }
           ]}>
             {wd.dayNum}
           </Text>
           <View style={[
             styles.cellDot, 
-            wd.completed ? styles.cellDotCompleted : styles.cellDotEmpty
+            wd.completed && !isNotStarted ? styles.cellDotCompleted : styles.cellDotEmpty
           ]} />
         </TouchableOpacity>
       );
@@ -376,6 +485,7 @@ export default function DincharyaScreen() {
                   task.keystone && styles.keystoneTaskItem
                 ]}
                 onPress={() => toggleTask(task.id)}
+                onLongPress={() => onTaskLongPress(task)}
                 activeOpacity={0.7}
               >
                 <View style={styles.taskLeftRow}>
@@ -427,6 +537,22 @@ export default function DincharyaScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Custom Task</Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { flex: 1, backgroundColor: newTaskType === 'everyday' ? '#FFF7ED' : '#F1F5F9', borderColor: newTaskType === 'everyday' ? '#EA580C' : '#E2E8F0', borderWidth: 1 }]}
+                onPress={() => setNewTaskType('everyday')}
+              >
+                <Text style={[styles.modalCancelButtonText, { color: newTaskType === 'everyday' ? '#EA580C' : '#475569' }]}>Everyday Task</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { flex: 1, backgroundColor: newTaskType === 'oneday' ? '#FFF7ED' : '#F1F5F9', borderColor: newTaskType === 'oneday' ? '#EA580C' : '#E2E8F0', borderWidth: 1 }]}
+                onPress={() => setNewTaskType('oneday')}
+              >
+                <Text style={[styles.modalCancelButtonText, { color: newTaskType === 'oneday' ? '#EA580C' : '#475569' }]}>One-Day Task</Text>
+              </TouchableOpacity>
+            </View>
+
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Read Swami Vivekananda scriptures"
@@ -466,6 +592,29 @@ export default function DincharyaScreen() {
                 <Text style={styles.modalAddButtonText}>Add Task</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isActionModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Task Options</Text>
+            <Text style={{ color: '#64748B', marginBottom: 20 }}>{longPressedTask?.title}</Text>
+            
+            <TouchableOpacity 
+              style={[styles.modalAddButton, { backgroundColor: '#EF4444', marginBottom: 12 }]} 
+              onPress={handleDeleteTask}
+            >
+              <Text style={styles.modalAddButtonText}>Delete for Today & Future</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.modalCancelButton} 
+              onPress={() => { setIsActionModalOpen(false); setLongPressedTask(null); }}
+            >
+              <Text style={styles.modalCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

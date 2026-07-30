@@ -11,6 +11,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('Male');
@@ -92,8 +93,11 @@ export default function RegisterScreen() {
         await AsyncStorage.setItem('user', JSON.stringify(userObj));
 
         // Start challenge status as inactive initially
-        await AsyncStorage.setItem('ojas_journey_active', 'false');
-        await AsyncStorage.removeItem('ojas_journey_start');
+        await AsyncStorage.setItem('ojas_challenge_active', 'false');
+        await AsyncStorage.removeItem('ojas_challenge_start');
+        
+        // Ensure Master Streak is completely blank initially
+        await AsyncStorage.removeItem('ojas_streak_start');
 
         router.replace('/(tabs)');
       } else {
@@ -177,8 +181,11 @@ export default function RegisterScreen() {
                   placeholderTextColor="#94A3B8"
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                 />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                   <FontAwesome5 name={showPassword ? "eye" : "eye-slash"} size={16} color="#94A3B8" />
+                </TouchableOpacity>
               </View>
             </View>
     
@@ -381,6 +388,9 @@ const styles = StyleSheet.create({
     height: '100%',
     fontSize: 15,
     color: '#0F172A',
+  },
+  eyeIcon: {
+    padding: 8,
   },
   goalsGrid: {
     flexDirection: 'row',

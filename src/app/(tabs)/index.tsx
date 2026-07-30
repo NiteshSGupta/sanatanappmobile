@@ -13,7 +13,7 @@ import Animated, {
   Easing,
   withRepeat
 } from 'react-native-reanimated';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import api from '../../utils/api';
 import CustomAlert from '../../components/CustomAlert';
 
@@ -32,16 +32,24 @@ const GAUGE_SPAN = 0.75; // 3/4 circle arc
 
 export default function JourneyScreen() {
   const [user, setUser] = useState<any>(null);
-  const [journeyStart, setJourneyStart] = useState<Date | null>(null);
-  const [days, setDays] = useState(0);
-  const [hours, setHours] = useState('00');
-  const [minutes, setMinutes] = useState('00');
-  const [seconds, setSeconds] = useState('00');
-  const [isRelapseModalOpen, setIsRelapseModalOpen] = useState(false);
   
-  const [targetGoalDays, setTargetGoalDays] = useState(90);
+  // Master Streak
+  const [streakStart, setStreakStart] = useState<Date | null>(null);
+  const [streakDays, setStreakDays] = useState(0);
+  const [streakHours, setStreakHours] = useState('00');
+  const [streakMinutes, setStreakMinutes] = useState('00');
+  const [streakSeconds, setStreakSeconds] = useState('00');
 
-  const [isJourneyActive, setIsJourneyActive] = useState(false);
+  // Active Challenge
+  const [isChallengeActive, setIsChallengeActive] = useState(false);
+  const [challengeStart, setChallengeStart] = useState<Date | null>(null);
+  const [challengeDays, setChallengeDays] = useState(0);
+
+  const [dincharyaCompletedCount, setDincharyaCompletedCount] = useState(0);
+  const [dincharyaTotalCount, setDincharyaTotalCount] = useState(0);
+  
+  const [isRelapseModalOpen, setIsRelapseModalOpen] = useState(false);
+  const [targetGoalDays, setTargetGoalDays] = useState(90);
   const [startReason, setStartReason] = useState('');
   
   // Custom Alert States
@@ -97,51 +105,71 @@ export default function JourneyScreen() {
   const getLeagueData = useCallback((currentDays: number) => {
     if (currentDays < 7) {
       return { 
-        current: 'Shishya (Seeker)', 
-        next: 'Sadhaka', 
+        current: 'Beginner', 
+        next: 'Bronze', 
         nextDaysReq: 7, 
         icon: 'seedling',
         stage: 'Acute Withdrawal',
-        energy: 'Virya (Physical Energy)'
+        energy: 'Virya (Physical)'
       };
-    } else if (currentDays < 30) {
+    } else if (currentDays < 21) {
       return { 
-        current: 'Sadhaka (Practitioner)', 
-        next: 'Tapasvi', 
-        nextDaysReq: 30, 
-        icon: 'leaf',
-        stage: 'Neuroplastic Reset',
+        current: 'Bronze', 
+        next: 'Silver', 
+        nextDaysReq: 21, 
+        icon: 'medal',
+        stage: 'Habit Formation',
         energy: 'Prana (Vitality)'
+      };
+    } else if (currentDays < 45) {
+      return { 
+        current: 'Silver', 
+        next: 'Gold', 
+        nextDaysReq: 45, 
+        icon: 'shield-alt',
+        stage: 'Discipline',
+        energy: 'Tejas (Radiance)'
       };
     } else if (currentDays < 90) {
       return { 
-        current: 'Tapasvi (Disciplined)', 
-        next: 'Brahmacharya', 
+        current: 'Gold', 
+        next: 'Diamond', 
         nextDaysReq: 90, 
-        icon: 'fire',
-        stage: 'Dopamine Reboot',
-        energy: 'Ojas (Mental Clarity)'
+        icon: 'crown',
+        stage: 'Dopamine Reset',
+        energy: 'Ojas (Clarity)'
+      };
+    } else if (currentDays < 180) {
+      return { 
+        current: 'Diamond', 
+        next: 'Master', 
+        nextDaysReq: 180, 
+        icon: 'gem',
+        stage: 'Deep Healing',
+        energy: 'Spiritual Alignment'
       };
     } else if (currentDays < 365) {
       return { 
-        current: 'Brahmacharya (Master)', 
-        next: 'Maharishi', 
+        current: 'Master', 
+        next: 'Brahmachari', 
         nextDaysReq: 365, 
-        icon: 'shield-alt',
-        stage: 'Semen Transmutation',
-        energy: 'Tejas (Radiance)'
+        icon: 'mountain',
+        stage: 'Transmutation',
+        energy: 'Profound Peace'
       };
     } else {
       return { 
-        current: 'Maharishi (Enlightened)', 
+        current: 'Brahmachari', 
         next: 'None', 
         nextDaysReq: 0, 
         icon: 'om',
         stage: 'Identity Restructured',
-        energy: 'Atman (Spiritual Mastery)'
+        energy: 'Atman (Mastery)'
       };
     }
   }, []);
+
+  const router = useRouter();
 
   const loadJourney = async () => {
     try {
@@ -152,15 +180,28 @@ export default function JourneyScreen() {
         setUser(parsedUser);
       }
       
-      const activeVal = await AsyncStorage.getItem('ojas_journey_active');
-      const isActive = activeVal === 'true';
-      setIsJourneyActive(isActive);
+      // Master Streak Migration & Loading
+      let savedStreakStart = await AsyncStorage.getItem('ojas_streak_start');
+      if (!savedStreakStart) {
+        // Fallback to legacy journey start for existing users
+        const legacyStart = await AsyncStorage.getItem('ojas_journey_start');
+        if (legacyStart) {
+          savedStreakStart = legacyStart; 
+          await AsyncStorage.setItem('ojas_streak_start', savedStreakStart);
+        }
+      }
+      setStreakStart(savedStreakStart ? new Date(savedStreakStart) : null);
 
-      const savedStart = await AsyncStorage.getItem('ojas_journey_start');
-      if (savedStart && isActive) {
-        setJourneyStart(new Date(savedStart));
+      // Challenge Loading
+      const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
+      const isActive = activeVal === 'true';
+      setIsChallengeActive(isActive);
+
+      const savedChallengeStart = await AsyncStorage.getItem('ojas_challenge_start');
+      if (savedChallengeStart && isActive) {
+        setChallengeStart(new Date(savedChallengeStart));
       } else {
-        setJourneyStart(null);
+        setChallengeStart(null);
       }
 
       const savedGoal = await AsyncStorage.getItem('ojas_target_goal_days');
@@ -182,8 +223,8 @@ export default function JourneyScreen() {
       }
 
       // Check for completion
-      if (isActive && savedStart) {
-        const start = new Date(savedStart);
+      if (isActive && savedChallengeStart) {
+        const start = new Date(savedChallengeStart);
         const now = new Date();
         const diff = now.getTime() - start.getTime();
         if (diff >= 0) {
@@ -193,6 +234,27 @@ export default function JourneyScreen() {
             setIsGoalCompletedModalOpen(true);
           }
         }
+      }
+
+      // Compute Dincharya Today Stats
+      if (isActive) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const storedTasks = await AsyncStorage.getItem(`dincharya_${todayStr}`);
+        if (storedTasks) {
+          const tasks = JSON.parse(storedTasks);
+          setDincharyaTotalCount(tasks.length);
+          setDincharyaCompletedCount(tasks.filter((t: any) => t.completed).length);
+        } else {
+          const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+          const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${todayStr}`);
+          const everydayCount = everydayTasksStr ? JSON.parse(everydayTasksStr).length : 0;
+          const onedayCount = onedayTasksStr ? JSON.parse(onedayTasksStr).length : 0;
+          setDincharyaTotalCount(everydayCount + onedayCount);
+          setDincharyaCompletedCount(0);
+        }
+      } else {
+        setDincharyaTotalCount(0);
+        setDincharyaCompletedCount(0);
       }
     } catch (e) {
       console.error(e);
@@ -206,7 +268,7 @@ export default function JourneyScreen() {
   );
 
   useEffect(() => {
-    if (!isJourneyActive) {
+    if (!isChallengeActive) {
       glowValue.value = withRepeat(
         withTiming(0.6, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
         -1,
@@ -215,54 +277,56 @@ export default function JourneyScreen() {
     } else {
       glowValue.value = 1;
     }
-  }, [isJourneyActive, glowValue]);
+  }, [isChallengeActive, glowValue]);
 
   const animatedGlowStyle = useAnimatedStyle(() => {
     return {
       opacity: glowValue.value,
-      transform: [{ scale: withTiming(isJourneyActive ? 1 : 1 + (1 - glowValue.value) * 0.04) }]
+      transform: [{ scale: withTiming(isChallengeActive ? 1 : 1 + (1 - glowValue.value) * 0.04) }]
     };
   });
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (journeyStart && isJourneyActive) {
-      interval = setInterval(() => {
-        const now = new Date();
-        const diff = now.getTime() - journeyStart.getTime();
+    interval = setInterval(() => {
+      const now = new Date();
+      
+      // Update Master Streak
+      if (streakStart) {
+        const streakDiff = now.getTime() - streakStart.getTime();
+        if (streakDiff >= 0) {
+          setStreakDays(Math.floor(streakDiff / (1000 * 60 * 60 * 24)));
+          setStreakHours(Math.floor((streakDiff / (1000 * 60 * 60)) % 24).toString().padStart(2, '0'));
+          setStreakMinutes(Math.floor((streakDiff / 1000 / 60) % 60).toString().padStart(2, '0'));
+          setStreakSeconds(Math.floor((streakDiff / 1000) % 60).toString().padStart(2, '0'));
+        }
+      }
+      
+      // Update Active Challenge
+      if (challengeStart && isChallengeActive) {
+        const diff = now.getTime() - challengeStart.getTime();
         if (diff >= 0) {
-          const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-          const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
-          const m = Math.floor((diff / 1000 / 60) % 60);
-          const s = Math.floor((diff / 1000) % 60);
-
-          setDays(d);
-          setHours(h.toString().padStart(2, '0'));
-          setMinutes(m.toString().padStart(2, '0'));
-          setSeconds(s.toString().padStart(2, '0'));
+          const cd = Math.floor(diff / (1000 * 60 * 60 * 24));
+          setChallengeDays(cd);
 
           // Scale circle gauge progress relative to active goal days
-          const targetPercent = Math.min((d / targetGoalDays) * 100, 100);
+          const targetPercent = Math.min((cd / targetGoalDays) * 100, 100);
           const fillPercentage = (targetPercent / 100) * GAUGE_SPAN;
           const offset = CIRCLE_CIRCUMFERENCE - fillPercentage * CIRCLE_CIRCUMFERENCE;
           progressOffset.value = withTiming(offset, { duration: 1000, easing: Easing.out(Easing.ease) });
 
           // Live Goal check
-          if (d >= targetGoalDays) {
+          if (cd >= targetGoalDays) {
             setIsGoalCompletedModalOpen(true);
           }
         }
-      }, 1000);
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDays(0);
-      setHours('00');
-      setMinutes('00');
-      setSeconds('00');
-      progressOffset.value = CIRCLE_CIRCUMFERENCE;
-    }
+      } else {
+        setChallengeDays(0);
+        progressOffset.value = CIRCLE_CIRCUMFERENCE;
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, [journeyStart, isJourneyActive, progressOffset, targetGoalDays]);
+  }, [streakStart, challengeStart, isChallengeActive, targetGoalDays, progressOffset]);
 
   const animatedCircleProps = useAnimatedProps(() => {
     return {
@@ -303,15 +367,22 @@ export default function JourneyScreen() {
     }
     try {
       const now = new Date();
-      setIsJourneyActive(true);
-      setJourneyStart(now);
+      setIsChallengeActive(true);
+      setChallengeStart(now);
       setTargetGoalDays(startGoalDays);
       setStartReason(startReasonInput);
 
-      await AsyncStorage.setItem('ojas_journey_active', 'true');
-      await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
+      await AsyncStorage.setItem('ojas_challenge_active', 'true');
+      await AsyncStorage.setItem('ojas_challenge_start', now.toISOString());
       await AsyncStorage.setItem('ojas_target_goal_days', startGoalDays.toString());
       await AsyncStorage.setItem('ojas_goal_start_reason', startReasonInput);
+
+      // Initialize Master Streak if this is their very first challenge
+      const existingStreakStart = await AsyncStorage.getItem('ojas_streak_start');
+      if (!existingStreakStart) {
+        await AsyncStorage.setItem('ojas_streak_start', now.toISOString());
+        setStreakStart(now);
+      }
 
       setIsStartChallengeModalOpen(false);
 
@@ -327,7 +398,7 @@ export default function JourneyScreen() {
         });
       }
       
-      showCustomAlert('Challenge Initiated! 🛡️', 'Your reboot cycle has begun. Focus on today\'s Dincharya tasks.');
+      showCustomAlert('Success: Challenge Initiated! 🛡️', "Your reboot cycle has begun. Focus on today's Dincharya tasks.");
     } catch (e) {
       console.error(e);
     }
@@ -359,13 +430,13 @@ export default function JourneyScreen() {
           date: new Date().toISOString().split('T')[0],
           target_goal_days: editGoalDays,
           journey_status: 'active',
-          active_goal_start_at: journeyStart ? journeyStart.toISOString() : null,
+          active_goal_start_at: challengeStart ? challengeStart.toISOString() : null,
           start_reason: editReasonInput,
           device_info: 'React Native App',
         });
       }
 
-      showCustomAlert('Goal Updated', 'Your goal parameters have been successfully updated.');
+      showCustomAlert('Success: Goal Updated', 'Your goal parameters have been successfully updated.');
     } catch (e) {
       console.error(e);
     }
@@ -382,7 +453,7 @@ export default function JourneyScreen() {
       const newArchivedGoal = {
         id: Date.now().toString(),
         target_days: targetGoalDays,
-        start_date: journeyStart ? journeyStart.toISOString() : new Date().toISOString(),
+        start_date: challengeStart ? challengeStart.toISOString() : new Date().toISOString(),
         completion_date: new Date().toISOString(),
         start_reason: startReason,
         status: 'completed',
@@ -391,20 +462,16 @@ export default function JourneyScreen() {
       const updatedHistory = [...history, newArchivedGoal];
       await AsyncStorage.setItem('ojas_goals_history', JSON.stringify(updatedHistory));
       
-      // Clear active states
-      setIsJourneyActive(false);
-      setJourneyStart(null);
-      setDays(0);
-      setHours('00');
-      setMinutes('00');
-      setSeconds('00');
+      // Clear active challenge states (do not reset streak!)
+      setIsChallengeActive(false);
+      setChallengeStart(null);
+      setChallengeDays(0);
       
-      await AsyncStorage.setItem('ojas_journey_active', 'false');
-      await AsyncStorage.removeItem('ojas_journey_start');
+      await AsyncStorage.setItem('ojas_challenge_active', 'false');
+      await AsyncStorage.removeItem('ojas_challenge_start');
       await AsyncStorage.removeItem('ojas_goal_start_reason');
       
-      // Reset active relapse list
-      await AsyncStorage.setItem('ojas_relapses', JSON.stringify([]));
+      // We do NOT reset active relapse list here (Streak continues)
       
       // Clear all Dincharya history for active cycle to start clean
       const keys = await AsyncStorage.getAllKeys();
@@ -427,7 +494,7 @@ export default function JourneyScreen() {
         });
       }
       
-      showCustomAlert('Congratulations! 🎉', 'Victory archived. Start your next phase when ready.');
+      showCustomAlert('Success: Congratulations! 🎉', 'Victory archived. Start your next phase when ready.');
     } catch (e) {
       console.error(e);
     }
@@ -460,8 +527,12 @@ export default function JourneyScreen() {
       console.error('Error saving relapse:', e);
     }
 
-    setJourneyStart(now);
-    await AsyncStorage.setItem('ojas_journey_start', now.toISOString());
+    // Master streak always resets on relapse
+    setStreakStart(now);
+    await AsyncStorage.setItem('ojas_streak_start', now.toISOString());
+    
+    // The active challenge continues despite a slip. It acts as a container for these events!
+    // We only reset the master streak, which was handled above.
     setIsRelapseModalOpen(false);
     
     // Reset state
@@ -548,10 +619,6 @@ export default function JourneyScreen() {
 
 
 
-  const league = getLeagueData(days);
-  const daysRemainingText = league.nextDaysReq > 0 ? `${league.nextDaysReq - days} days away` : 'Max tier';
-  const progressPercent = league.nextDaysReq > 0 ? Math.min((days / league.nextDaysReq) * 100, 100) : 100;
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -569,7 +636,7 @@ export default function JourneyScreen() {
 
         {/* Hero Circular Progress Gauge Card */}
         <View style={styles.heroCard}>
-          <Text style={styles.streakLabel}>CURRENT STREAK</Text>
+          <Text style={styles.streakLabel}>LIFETIME RECOVERY</Text>
           
           <View style={styles.circleWrapper}>
             {/* Om Background Watermark */}
@@ -597,7 +664,20 @@ export default function JourneyScreen() {
 
             {/* Inner text */}
             <View style={styles.circleCenter}>
-              {!isJourneyActive ? (
+              
+              {streakStart ? (
+                <>
+                  <Text style={styles.daysText}>{streakDays}</Text>
+                  <Text style={styles.daysLabel}>Days</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.daysText, { fontSize: 40, marginTop: -5 }]}>00</Text>
+                  <Text style={styles.daysLabel}>Awaiting</Text>
+                </>
+              )}
+
+              {!isChallengeActive ? (
                 <Animated.View style={animatedGlowStyle}>
                   <TouchableOpacity style={styles.startChallengeBtn} onPress={() => setIsStartChallengeModalOpen(true)}>
                     <Text style={styles.startBtnGlowText}>START</Text>
@@ -605,32 +685,31 @@ export default function JourneyScreen() {
                   </TouchableOpacity>
                 </Animated.View>
               ) : (
-                <>
-                  <Text style={styles.daysText}>{days}</Text>
-                  <Text style={styles.daysLabel}>Days</Text>
-                  <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
-                    <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
-                    <Text style={styles.goalPillText}>Goal: {targetGoalDays}d</Text>
-                  </TouchableOpacity>
-                </>
+                <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
+                  <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
+                  <Text style={styles.goalPillText}>Challenge: {challengeDays}/{targetGoalDays}d</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
 
+          <View style={{ width: '100%', alignItems: 'center', marginTop: 12 }}>
+            <Text style={styles.streakLabel}>LIFETIME STREAK</Text>
+          </View>
           {/* Hours, Minutes, Seconds Counters */}
-          <View style={styles.timeGrid}>
+          <View style={[styles.timeGrid, { marginTop: 4 }]}>
             <View style={styles.timeBlock}>
-              <Text style={styles.timeCount}>{hours}</Text>
+              <Text style={styles.timeCount}>{streakStart ? streakHours : '00'}</Text>
               <Text style={styles.timeLabel}>HOURS</Text>
             </View>
             <Text style={styles.timeDivider}>:</Text>
             <View style={styles.timeBlock}>
-              <Text style={styles.timeCount}>{minutes}</Text>
+              <Text style={styles.timeCount}>{streakStart ? streakMinutes : '00'}</Text>
               <Text style={styles.timeLabel}>MINUTES</Text>
             </View>
             <Text style={styles.timeDivider}>:</Text>
             <View style={styles.timeBlock}>
-              <Text style={styles.timeCount}>{seconds}</Text>
+              <Text style={styles.timeCount}>{streakStart ? streakSeconds : '00'}</Text>
               <Text style={styles.timeLabel}>SECONDS</Text>
             </View>
           </View>
@@ -648,52 +727,28 @@ export default function JourneyScreen() {
           </View>
         </View>
 
-        {/* Daily Quote Card */}
-        <View style={styles.quoteCard}>
-          <Text style={styles.quoteIcon}>&quot;</Text>
-          <Text style={styles.quoteText}>
-            &quot;Purity of thought, speech, and deed – this is the threefold tapas of the wise.&quot;
-          </Text>
-          <Text style={styles.quoteAuthor}>— YOGA SUTRAS</Text>
-        </View>
-
-        {/* Your League Card */}
-        <View style={styles.leagueCard}>
+        {/* Dincharya Summary Card */}
+        <TouchableOpacity style={styles.leagueCard} onPress={() => router.push('/(tabs)/dincharya')}>
           <View style={styles.leagueHeader}>
             <View style={styles.leagueBadgeWrapper}>
               <View style={styles.leagueBadgeIcon}>
-                <FontAwesome5 name={league.icon} size={22} color="#EA580C" />
+                <FontAwesome5 name="clipboard-list" size={22} color="#EA580C" />
               </View>
               <View>
-                <Text style={styles.leagueTitle}>ACTIVE REALM</Text>
-                <Text style={styles.activeLeagueText}>{league.current}</Text>
+                <Text style={styles.leagueTitle}>TODAY'S DINCHARYA</Text>
+                <Text style={styles.activeLeagueText}>
+                  {dincharyaTotalCount > 0 
+                    ? `${dincharyaCompletedCount} out of ${dincharyaTotalCount} Tasks Completed` 
+                    : 'No Routine Set Today'}
+                </Text>
               </View>
-            </View>
-          </View>
-
-          <View style={styles.leagueStageRow}>
-            <View style={styles.leagueStageCol}>
-              <Text style={styles.leagueSubLabel}>BIOLOGICAL STATE</Text>
-              <Text style={styles.leagueSubVal}>{league.stage}</Text>
-            </View>
-            <View style={styles.leagueStageCol}>
-              <Text style={styles.leagueSubLabel}>ENERGY LEVEL</Text>
-              <Text style={styles.leagueSubVal}>{league.energy}</Text>
             </View>
           </View>
 
           <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            <View style={[styles.progressBarFill, { width: dincharyaTotalCount === 0 ? '0%' : `${(dincharyaCompletedCount / dincharyaTotalCount) * 100}%` }]} />
           </View>
-
-          <View style={styles.leagueProgressLabels}>
-            <Text style={styles.progressMinLabel}>0d</Text>
-            <Text style={styles.progressNextLabel}>
-              {league.next !== 'None' ? `${daysRemainingText} to ${league.next}` : 'Ultimate Realm Unlocked'}
-            </Text>
-            <Text style={styles.progressMaxLabel}>{league.nextDaysReq > 0 ? `${league.nextDaysReq}d` : '∞'}</Text>
-          </View>
-        </View>
+        </TouchableOpacity>
 
       </ScrollView>
 
@@ -866,33 +921,25 @@ export default function JourneyScreen() {
 
             <Text style={styles.relapseInputLabel}>SELECT TARGET DAYS</Text>
             <View style={styles.presetGrid}>
-              {[
-                { label: '7 Days · Micro Reboot 🌱', val: 7 },
-                { label: '21 Days · Habit Formation 🌿', val: 21 },
-                { label: '90 Days · Dopamine Reboot 🔥', val: 90 },
-                { label: '365 Days · Complete Master 🛡️', val: 365 }
-              ].map((preset) => (
+              {[7, 21, 45, 90, 180, 365].map((val) => (
                 <TouchableOpacity
-                  key={preset.val}
-                  style={[styles.presetBtn, startGoalDays === preset.val && styles.presetBtnActive]}
-                  onPress={() => setStartGoalDays(preset.val)}
+                  key={val}
+                  style={[styles.presetBtn, startGoalDays === val && styles.presetBtnActive]}
+                  onPress={() => setStartGoalDays(val)}
                 >
-                  <Text style={[styles.presetBtnText, startGoalDays === preset.val && styles.presetBtnTextActive]}>
-                    {preset.label}
-                  </Text>
+                  <Text style={[styles.presetBtnTitle, startGoalDays === val && styles.presetBtnTextActive]}>{val}</Text>
+                  <Text style={[styles.presetBtnLabel, startGoalDays === val && styles.presetBtnTextActive]}>Days</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            <Text style={styles.relapseInputLabel}>OR ENTER CUSTOM DAYS</Text>
-            <TextInput
-              style={[styles.customGoalInput, { width: '100%', marginBottom: 16 }]}
-              placeholder="e.g. 30"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              value={startGoalDays.toString()}
-              onChangeText={(t) => setStartGoalDays(parseInt(t.replace(/[^0-9]/g, '')) || 7)}
-            />
+            <Text style={styles.selectedPresetLabel}>
+              {startGoalDays === 7 ? '7 Days · Micro Reboot 🌱' : 
+               startGoalDays === 21 ? '21 Days · Habit Builder 🌿' : 
+               startGoalDays === 45 ? '45 Days · Discipline Master 🏹' : 
+               startGoalDays === 90 ? '90 Days · Dopamine Reset 🔥' : 
+               startGoalDays === 180 ? '180 Days · Deep Healing 🌊' : 
+               '365 Days · Brahmacharya Journey 🛡️'}
+            </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
             <TextInput
@@ -932,39 +979,32 @@ export default function JourneyScreen() {
             <View style={[styles.modalIconBg, { backgroundColor: '#FFF7ED' }]}>
               <FontAwesome5 name="edit" size={20} color="#EA580C" />
             </View>
-            <Text style={styles.goalModalTitle}>Edit Goal Challenge</Text>
+            <Text style={styles.goalModalTitle}>Edit Challenge</Text>
             <Text style={styles.goalModalSubtitle}>
               Modify your current target and starting resolve. Note: this will not reset your active streak.
             </Text>
 
-            <Text style={styles.relapseInputLabel}>TARGET GOAL (DAYS)</Text>
+            <Text style={styles.relapseInputLabel}>TARGET CHALLENGE (DAYS)</Text>
             <View style={styles.presetGrid}>
-              {[
-                { label: '7 Days', val: 7 },
-                { label: '21 Days', val: 21 },
-                { label: '90 Days', val: 90 },
-                { label: '365 Days', val: 365 }
-              ].map((preset) => (
+              {[7, 21, 45, 90, 180, 365].map((val) => (
                 <TouchableOpacity
-                  key={preset.val}
-                  style={[styles.presetBtn, editGoalDays === preset.val && styles.presetBtnActive]}
-                  onPress={() => setEditGoalDays(preset.val)}
+                  key={val}
+                  style={[styles.presetBtn, editGoalDays === val && styles.presetBtnActive]}
+                  onPress={() => setEditGoalDays(val)}
                 >
-                  <Text style={[styles.presetBtnText, editGoalDays === preset.val && styles.presetBtnTextActive]}>
-                    {preset.label}
-                  </Text>
+                  <Text style={[styles.presetBtnTitle, editGoalDays === val && styles.presetBtnTextActive]}>{val}</Text>
+                  <Text style={[styles.presetBtnLabel, editGoalDays === val && styles.presetBtnTextActive]}>Days</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            <TextInput
-              style={[styles.customGoalInput, { width: '100%', marginBottom: 16 }]}
-              placeholder="Custom days"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              value={editGoalDays.toString()}
-              onChangeText={(t) => setEditGoalDays(parseInt(t.replace(/[^0-9]/g, '')) || 7)}
-            />
+            <Text style={styles.selectedPresetLabel}>
+              {editGoalDays === 7 ? '7 Days · Micro Reboot 🌱' : 
+               editGoalDays === 21 ? '21 Days · Habit Builder 🌿' : 
+               editGoalDays === 45 ? '45 Days · Discipline Master 🏹' : 
+               editGoalDays === 90 ? '90 Days · Dopamine Reset 🔥' : 
+               editGoalDays === 180 ? '180 Days · Deep Healing 🌊' : 
+               '365 Days · Brahmacharya Journey 🛡️'}
+            </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
             <TextInput
@@ -1632,17 +1672,44 @@ const styles = StyleSheet.create({
   },
   presetGrid: {
     width: '100%',
-    gap: 10,
-    marginBottom: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   presetBtn: {
     backgroundColor: '#F8FAFC',
     borderColor: '#E2E8F0',
     borderWidth: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
-    width: '100%',
+    justifyContent: 'center',
+    width: '31%',
+    marginBottom: 10,
+  },
+  presetBtnTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#334155',
+  },
+  presetBtnLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  selectedPresetLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EA580C',
+    textAlign: 'center',
+    marginBottom: 20,
+    backgroundColor: '#FFF7ED',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   presetBtnActive: {
     backgroundColor: '#FFEDD5',
@@ -1712,9 +1779,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     width: '100%',
-    gap: 10,
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   optionBtn: {
     width: '48%',
@@ -1725,6 +1791,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 10,
     alignItems: 'center',
+    marginBottom: 10,
   },
   optionBtnActive: {
     backgroundColor: '#FFEDD5',
