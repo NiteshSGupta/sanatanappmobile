@@ -8,7 +8,10 @@ import CustomAlert from '../../components/CustomAlert';
 import Svg, { Circle } from 'react-native-svg';
 import api from '../../utils/api';
 
-
+const toLocalDateString = (d: Date) => {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 const getMonthDaysList = (dateString?: string) => {
   const daysArr = [];
@@ -21,7 +24,7 @@ const getMonthDaysList = (dateString?: string) => {
   
   for (let i = 1; i <= totalDays; i++) {
     const d = new Date(year, month, i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = toLocalDateString(d);
     const dayName = d.toLocaleDateString('en-US', { weekday: 'narrow' }); // S, M, T...
     const dayNum = i;
     
@@ -38,7 +41,7 @@ const getMonthDaysList = (dateString?: string) => {
 export default function DincharyaScreen() {
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateString(new Date()));
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
@@ -69,9 +72,9 @@ export default function DincharyaScreen() {
 
   const getDayState = (dateStr: string, active: boolean, start: Date | null, end: Date | null) => {
     if (!active || !start || !end) return 'Past Day'; 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const startStr = start.toISOString().split('T')[0];
-    const endStr = end.toISOString().split('T')[0];
+    const todayStr = toLocalDateString(new Date());
+    const startStr = toLocalDateString(start);
+    const endStr = toLocalDateString(end);
     if (dateStr < startStr || dateStr > endStr) return 'Not Started';
     if (dateStr > todayStr) return 'Future Day';
     if (dateStr === todayStr) return 'Today';
@@ -175,7 +178,7 @@ export default function DincharyaScreen() {
     const d = new Date(selectedDate);
     d.setMonth(d.getMonth() + direction);
     d.setDate(1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(toLocalDateString(d));
   };
 
   const toggleTask = async (id: string) => {
@@ -300,7 +303,7 @@ export default function DincharyaScreen() {
     // 2. Add day cells
     monthDays.forEach((wd) => {
       const isSelected = wd.dateStr === selectedDate;
-      const isToday = wd.dateStr === new Date().toISOString().split('T')[0];
+      const isToday = wd.dateStr === toLocalDateString(new Date());
       const state = getDayState(wd.dateStr, isChallengeActive, challengeStart, challengeEnd);
       const isNotStarted = state === 'Not Started';
       const isFuture = state === 'Future Day';
@@ -460,7 +463,7 @@ export default function DincharyaScreen() {
         {/* Tasks Section */}
         <View style={styles.tasksHeader}>
           <Text style={styles.tasksSectionTitle}>TASKS</Text>
-          {selectedDate === new Date().toISOString().split('T')[0] && (
+          {selectedDate === toLocalDateString(new Date()) && (
             <TouchableOpacity style={styles.btnAddTask} onPress={() => setIsAddModalOpen(true)}>
               <Text style={styles.btnAddTaskText}>+ Add</Text>
             </TouchableOpacity>

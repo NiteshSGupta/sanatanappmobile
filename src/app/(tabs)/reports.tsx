@@ -5,6 +5,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
+const toLocalDateString = (d: Date) => {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 interface DayStatus {
   dayName: string;
   dateStr: string;
@@ -49,7 +54,7 @@ export default function ReportsScreen() {
         for (let i = 6; i >= 0; i--) {
           const d = new Date();
           d.setDate(today.getDate() - i);
-          const dateStr = d.toISOString().split('T')[0];
+          const dateStr = toLocalDateString(d);
           const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
           last7Days.push({
             dayName,
@@ -102,7 +107,7 @@ export default function ReportsScreen() {
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(d);
         last7DaysKeys.push(`dincharya_${dateStr}`);
       }
       const pairs = await AsyncStorage.multiGet(last7DaysKeys);
@@ -115,7 +120,7 @@ export default function ReportsScreen() {
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(d);
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
         
         // Skip days before start date
@@ -316,7 +321,7 @@ export default function ReportsScreen() {
         const d = new Date();
         d.setDate(today.getDate() - i);
         if (journeyStartObj && d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(d);
         last7DaysKeys.push(`dincharya_${dateStr}`);
       }
       const pairs = last7DaysKeys.length > 0 ? await AsyncStorage.multiGet(last7DaysKeys) : [];
@@ -330,7 +335,7 @@ export default function ReportsScreen() {
         d.setDate(today.getDate() - i);
         if (journeyStartObj && d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
 
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(d);
         const storedTasks = taskMap[`dincharya_${dateStr}`];
         if (storedTasks) {
           const tasks = JSON.parse(storedTasks);

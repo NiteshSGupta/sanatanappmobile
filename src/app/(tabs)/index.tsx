@@ -17,6 +17,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import api from '../../utils/api';
 import CustomAlert from '../../components/CustomAlert';
 
+const toLocalDateString = (d: Date) => {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const STAGES = [
@@ -93,6 +98,10 @@ export default function JourneyScreen() {
   const urgeCircleScale = useSharedValue(1);
 
   const openRelapseModal = () => {
+    if (!streakStart) {
+      showCustomAlert('Start Challenge First', 'Please set your first challenge goal to begin tracking your journey before recording a relapse.');
+      return;
+    }
     setIsRelapseModalOpen(true);
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) setSelectedTimeOfDay('Morning');
@@ -238,7 +247,7 @@ export default function JourneyScreen() {
 
       // Compute Dincharya Today Stats
       if (isActive) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = toLocalDateString(new Date());
         const storedTasks = await AsyncStorage.getItem(`dincharya_${todayStr}`);
         if (storedTasks) {
           const tasks = JSON.parse(storedTasks);
@@ -350,7 +359,7 @@ export default function JourneyScreen() {
 
       await api.post('/sync', {
         uuid: parsedUser.username,
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(new Date()),
         target_goal_days: goal,
         relapses: relapsesToSend,
         device_info: 'React Native App',
@@ -389,7 +398,7 @@ export default function JourneyScreen() {
       if (user && user.username) {
         await api.post('/sync', {
           uuid: user.username,
-          date: now.toISOString().split('T')[0],
+          date: toLocalDateString(now),
           target_goal_days: startGoalDays,
           journey_status: 'active',
           active_goal_start_at: now.toISOString(),
@@ -427,7 +436,7 @@ export default function JourneyScreen() {
       if (user && user.username) {
         await api.post('/sync', {
           uuid: user.username,
-          date: new Date().toISOString().split('T')[0],
+          date: toLocalDateString(new Date()),
           target_goal_days: editGoalDays,
           journey_status: 'active',
           active_goal_start_at: challengeStart ? challengeStart.toISOString() : null,
@@ -484,7 +493,7 @@ export default function JourneyScreen() {
       if (user && user.username) {
         await api.post('/sync', {
           uuid: user.username,
-          date: new Date().toISOString().split('T')[0],
+          date: toLocalDateString(new Date()),
           target_goal_days: 90,
           journey_status: 'inactive',
           active_goal_start_at: null,
