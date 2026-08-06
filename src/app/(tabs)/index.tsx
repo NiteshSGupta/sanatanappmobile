@@ -114,8 +114,8 @@ export default function JourneyScreen() {
   const getLeagueData = useCallback((currentDays: number) => {
     if (currentDays < 7) {
       return { 
-        current: 'Beginner', 
-        next: 'Bronze', 
+        current: 'seed', 
+        next: 'sprout', 
         nextDaysReq: 7, 
         icon: 'seedling',
         stage: 'Acute Withdrawal',
@@ -123,26 +123,26 @@ export default function JourneyScreen() {
       };
     } else if (currentDays < 21) {
       return { 
-        current: 'Bronze', 
-        next: 'Silver', 
+        current: 'sprout', 
+        next: 'frozen', 
         nextDaysReq: 21, 
         icon: 'medal',
         stage: 'Habit Formation',
         energy: 'Prana (Vitality)'
       };
-    } else if (currentDays < 45) {
+    } else if (currentDays < 40) {
       return { 
-        current: 'Silver', 
-        next: 'Gold', 
-        nextDaysReq: 45, 
+        current: 'frozen', 
+        next: 'bloom', 
+        nextDaysReq: 40, 
         icon: 'shield-alt',
         stage: 'Discipline',
         energy: 'Tejas (Radiance)'
       };
     } else if (currentDays < 90) {
       return { 
-        current: 'Gold', 
-        next: 'Diamond', 
+        current: 'bloom', 
+        next: 'season', 
         nextDaysReq: 90, 
         icon: 'crown',
         stage: 'Dopamine Reset',
@@ -150,8 +150,8 @@ export default function JourneyScreen() {
       };
     } else if (currentDays < 180) {
       return { 
-        current: 'Diamond', 
-        next: 'Master', 
+        current: 'season', 
+        next: 'aurora', 
         nextDaysReq: 180, 
         icon: 'gem',
         stage: 'Deep Healing',
@@ -159,8 +159,8 @@ export default function JourneyScreen() {
       };
     } else if (currentDays < 365) {
       return { 
-        current: 'Master', 
-        next: 'Brahmachari', 
+        current: 'aurora', 
+        next: 'brahmachari', 
         nextDaysReq: 365, 
         icon: 'mountain',
         stage: 'Transmutation',
@@ -168,7 +168,7 @@ export default function JourneyScreen() {
       };
     } else {
       return { 
-        current: 'Brahmachari', 
+        current: 'brahmachari', 
         next: 'None', 
         nextDaysReq: 0, 
         icon: 'om',
@@ -638,14 +638,14 @@ export default function JourneyScreen() {
             <View style={styles.headerLogo}>
               <FontAwesome5 name="om" size={20} color="#FFFFFF" />
             </View>
-            <Text style={styles.headerTitle}>Brahmacharya</Text>
+            <Text style={styles.headerTitle}>Kaivalya</Text>
           </View>
           <Text style={styles.headerUser}>Hi, {user?.name?.split(' ')[0] || 'seeker'}</Text>
         </View>
 
         {/* Hero Circular Progress Gauge Card */}
         <View style={styles.heroCard}>
-          <Text style={styles.streakLabel}>LIFETIME RECOVERY</Text>
+          <Text style={styles.streakLabel}>SANKALPA DURATION</Text>
           
           <View style={styles.circleWrapper}>
             {/* Om Background Watermark */}
@@ -744,7 +744,7 @@ export default function JourneyScreen() {
                 <FontAwesome5 name="clipboard-list" size={22} color="#EA580C" />
               </View>
               <View>
-                <Text style={styles.leagueTitle}>TODAY'S DINCHARYA</Text>
+                <Text style={styles.leagueTitle}>{"TODAY'S DINCHARYA"}</Text>
                 <Text style={styles.activeLeagueText}>
                   {dincharyaTotalCount > 0 
                     ? `${dincharyaCompletedCount} out of ${dincharyaTotalCount} Tasks Completed` 
@@ -930,7 +930,7 @@ export default function JourneyScreen() {
 
             <Text style={styles.relapseInputLabel}>SELECT TARGET DAYS</Text>
             <View style={styles.presetGrid}>
-              {[7, 21, 45, 90, 180, 365].map((val) => (
+              {[7, 21, 40, 90, 180, 365].map((val) => (
                 <TouchableOpacity
                   key={val}
                   style={[styles.presetBtn, startGoalDays === val && styles.presetBtnActive]}
@@ -942,12 +942,12 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {startGoalDays === 7 ? '7 Days · Micro Reboot 🌱' : 
-               startGoalDays === 21 ? '21 Days · Habit Builder 🌿' : 
-               startGoalDays === 45 ? '45 Days · Discipline Master 🏹' : 
-               startGoalDays === 90 ? '90 Days · Dopamine Reset 🔥' : 
-               startGoalDays === 180 ? '180 Days · Deep Healing 🌊' : 
-               '365 Days · Brahmacharya Journey 🛡️'}
+              {startGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' : 
+               startGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' : 
+               startGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' : 
+               startGoalDays === 90 ? '90 Days · Season Challenge 🍂' : 
+               startGoalDays === 180 ? '180 Days · Aurora Challenge ✨' : 
+               '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
@@ -995,7 +995,7 @@ export default function JourneyScreen() {
 
             <Text style={styles.relapseInputLabel}>TARGET CHALLENGE (DAYS)</Text>
             <View style={styles.presetGrid}>
-              {[7, 21, 45, 90, 180, 365].map((val) => (
+              {[7, 21, 40, 90, 180, 365].map((val) => (
                 <TouchableOpacity
                   key={val}
                   style={[styles.presetBtn, editGoalDays === val && styles.presetBtnActive]}
@@ -1007,12 +1007,12 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {editGoalDays === 7 ? '7 Days · Micro Reboot 🌱' : 
-               editGoalDays === 21 ? '21 Days · Habit Builder 🌿' : 
-               editGoalDays === 45 ? '45 Days · Discipline Master 🏹' : 
-               editGoalDays === 90 ? '90 Days · Dopamine Reset 🔥' : 
-               editGoalDays === 180 ? '180 Days · Deep Healing 🌊' : 
-               '365 Days · Brahmacharya Journey 🛡️'}
+              {editGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' : 
+               editGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' : 
+               editGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' : 
+               editGoalDays === 90 ? '90 Days · Season Challenge 🍂' : 
+               editGoalDays === 180 ? '180 Days · Aurora Challenge ✨' : 
+               '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>

@@ -1,11 +1,21 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Image } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../utils/api';
+
+const LEAGUE_BADGES: { [key: string]: any } = {
+  seed: require('../../../assets/leaque-images/seed.png'),
+  sprout: require('../../../assets/leaque-images/sprout.png'),
+  frozen: require('../../../assets/leaque-images/frozen.png'),
+  bloom: require('../../../assets/leaque-images/bloom.png'),
+  season: require('../../../assets/leaque-images/season.png'),
+  aurora: require('../../../assets/leaque-images/aurora.png'),
+  brahmachari: require('../../../assets/leaque-images/brahmacharya.png'),
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -200,13 +210,13 @@ export default function ProfileScreen() {
 
   // Get league badge details
   const getLeagueBadge = (days: number) => {
-    if (days < 7) return 'Beginner';
-    if (days < 21) return 'Bronze';
-    if (days < 45) return 'Silver';
-    if (days < 90) return 'Gold';
-    if (days < 180) return 'Diamond';
-    if (days < 365) return 'Master';
-    return 'Brahmachari';
+    if (days < 7) return 'seed';
+    if (days < 21) return 'sprout';
+    if (days < 40) return 'frozen';
+    if (days < 90) return 'bloom';
+    if (days < 180) return 'season';
+    if (days < 365) return 'aurora';
+    return 'brahmachari';
   };
 
   if (!user) return null;
@@ -229,7 +239,15 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.profileSubMetaText}>Age: {user.age} · Gender: {user.gender}</Text>
             <View style={styles.leagueBadge}>
-              <FontAwesome5 name="fire" size={12} color="#EA580C" />
+              {LEAGUE_BADGES[getLeagueBadge(currentStreak)] ? (
+                <Image 
+                  source={LEAGUE_BADGES[getLeagueBadge(currentStreak)]} 
+                  style={{ width: 20, height: 20, borderRadius: getLeagueBadge(currentStreak) === 'aurora' ? 4 : 0 }} 
+                  resizeMode="contain"
+                />
+              ) : (
+                <FontAwesome5 name="fire" size={12} color="#EA580C" />
+              )}
               <Text style={styles.leagueBadgeText}>{getLeagueBadge(currentStreak)}</Text>
             </View>
           </View>

@@ -123,7 +123,7 @@ export default function RegisterScreen() {
             <View style={styles.iconWrapper}>
               <FontAwesome5 name="om" size={32} color="#FFFFFF" />
             </View>
-            <Text style={styles.title}>Brahmacharya</Text>
+            <Text style={styles.title}>Kaivalya</Text>
             <Text style={styles.subtitle}>Begin your journey of self-mastery</Text>
           </View>
     

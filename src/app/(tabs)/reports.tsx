@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -377,21 +377,21 @@ export default function ReportsScreen() {
 
   // League details for the League Journey section
   const LEAGUES = [
-    { name: 'Beginner', days: '0+ days', req: 0, icon: 'seedling' },
-    { name: 'Bronze', days: '7+ days', req: 7, icon: 'medal' },
-    { name: 'Silver', days: '21+ days', req: 21, icon: 'shield-alt' },
-    { name: 'Gold', days: '45+ days', req: 45, icon: 'crown' },
-    { name: 'Diamond', days: '90+ days', req: 90, icon: 'gem' },
-    { name: 'Master', days: '180+ days', req: 180, icon: 'mountain' },
-    { name: 'Brahmachari', days: '365+ days', req: 365, icon: 'om' },
+    { name: 'seed', days: '0+ days', req: 0, icon: 'seedling', image: require('../../../assets/leaque-images/seed.png'), imgSize: 26 },
+    { name: 'sprout', days: '7+ days', req: 7, icon: 'medal', image: require('../../../assets/leaque-images/sprout.png'), imgSize: 26 },
+    { name: 'frozen', days: '21+ days', req: 21, icon: 'shield-alt', image: require('../../../assets/leaque-images/frozen.png'), imgSize: 26 },
+    { name: 'bloom', days: '40+ days', req: 40, icon: 'crown', image: require('../../../assets/leaque-images/bloom.png'), imgSize: 26 },
+    { name: 'season', days: '90+ days', req: 90, icon: 'gem', image: require('../../../assets/leaque-images/season.png'), imgSize: 26 },
+    { name: 'aurora', days: '180+ days', req: 180, icon: 'mountain', image: require('../../../assets/leaque-images/aurora.png'), imgSize: 26, imgStyle: { borderRadius: 6 } },
+    { name: 'brahmachari', days: '365+ days', req: 365, icon: 'om', image: require('../../../assets/leaque-images/brahmacharya.png'), imgSize: 26 },
   ];
 
   // Helper to calculate progress for active league
   const getActiveLeagueProgress = (days: number) => {
     if (days >= 180 && days < 365) return Math.min(((days - 180) / 185) * 100, 100);
     if (days >= 90 && days < 180) return Math.min(((days - 90) / 90) * 100, 100);
-    if (days >= 45 && days < 90) return Math.min(((days - 45) / 45) * 100, 100);
-    if (days >= 21 && days < 45) return Math.min(((days - 21) / 24) * 100, 100);
+    if (days >= 40 && days < 90) return Math.min(((days - 40) / 50) * 100, 100);
+    if (days >= 21 && days < 40) return Math.min(((days - 21) / 19) * 100, 100);
     if (days >= 7 && days < 21) return Math.min(((days - 7) / 14) * 100, 100);
     if (days < 7) return Math.min((days / 7) * 100, 100);
     return 100;
@@ -643,9 +643,8 @@ export default function ReportsScreen() {
           <View style={styles.leagueList}>
             {LEAGUES.map((l) => {
               const isAchieved = currentStreak >= l.req;
-              const isActiveLeague = currentStreak >= l.req && (
-                l.name === 'Maharishi' || currentStreak < LEAGUES[LEAGUES.findIndex(x => x.name === l.name) + 1].req
-              );
+              const nextLeague = LEAGUES[LEAGUES.findIndex(x => x.name === l.name) + 1];
+              const isActiveLeague = currentStreak >= l.req && (!nextLeague || currentStreak < nextLeague.req);
 
               return (
                 <View key={l.name} style={[styles.leagueItem, !isAchieved && styles.leagueItemLocked]}>
@@ -653,11 +652,26 @@ export default function ReportsScreen() {
                     styles.leagueIconWrapper, 
                     isAchieved ? styles.leagueIconWrapperActive : styles.leagueIconWrapperLocked
                   ]}>
-                    <FontAwesome5 
-                      name={l.icon} 
-                      size={14} 
-                      color={isAchieved ? '#EA580C' : '#94A3B8'} 
-                    />
+                    {l.image ? (
+                      <Image 
+                        source={l.image} 
+                        style={[
+                          { 
+                            width: l.imgSize || 18, 
+                            height: l.imgSize || 18, 
+                            opacity: isAchieved ? 1 : 0.7 
+                          }, 
+                          l.imgStyle
+                        ]} 
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <FontAwesome5 
+                        name={l.icon} 
+                        size={14} 
+                        color={isAchieved ? '#EA580C' : '#94A3B8'} 
+                      />
+                    )}
                   </View>
 
                   <View style={styles.leagueInfo}>
@@ -665,7 +679,7 @@ export default function ReportsScreen() {
                       {l.name} {isActiveLeague && <Text style={styles.youIndicator}>← you</Text>}
                     </Text>
                     
-                    {isActiveLeague && l.name !== 'Maharishi' && (
+                    {isActiveLeague && l.name !== 'brahmachari' && (
                       <View style={styles.leagueProgressContainer}>
                         <View style={styles.leagueProgressTrack}>
                           <View style={[styles.leagueProgressFill, { width: `${activeProgress}%` }]} />
