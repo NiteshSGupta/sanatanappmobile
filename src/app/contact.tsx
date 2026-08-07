@@ -50,7 +50,7 @@ export default function ContactScreen() {
       });
 
       if (response.data && response.data.success) {
-        showCustomAlert('Message Sent', 'Thank you! Your message has been sent successfully.');
+        showCustomAlert('Success: Message Sent', 'Thank you! Your message has been sent successfully.');
         setContactName('');
         setContactMobile('');
         setContactEmail('');
