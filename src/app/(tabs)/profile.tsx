@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Image } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import CustomAlert from '../../components/CustomAlert';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomAlert from '../../components/CustomAlert';
 import api from '../../utils/api';
 
 const LEAGUE_BADGES: { [key: string]: any } = {
@@ -17,10 +17,20 @@ const LEAGUE_BADGES: { [key: string]: any } = {
   brahmachari: require('../../../assets/leaque-images/brahmacharya.png'),
 };
 
+const LEAGUE_NAMES: { [key: string]: string } = {
+  seed: 'Seed',
+  sprout: 'Sprout',
+  frozen: 'Frozen',
+  bloom: 'Bloom',
+  season: 'Season',
+  aurora: 'Aurora',
+  brahmachari: 'Brahmachari',
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  
+
   // Stats states
   const [currentStreak, setCurrentStreak] = useState(0);
 
@@ -102,7 +112,7 @@ export default function ProfileScreen() {
       showCustomAlert('Error', 'Please enter both your name and age.');
       return;
     }
-    
+
     setIsSaving(true);
     try {
       const updatedUser = {
@@ -111,10 +121,10 @@ export default function ProfileScreen() {
         age: parseInt(editAge),
         gender: editGender,
       };
-      
+
       await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
-      
+
       // Call Laravel sync in background if username exists
       const username = user?.username || user?.uuid;
       if (username) {
@@ -128,7 +138,7 @@ export default function ProfileScreen() {
           device_info: 'React Native App',
         });
       }
-      
+
       setIsEditModalOpen(false);
       showCustomAlert('Success', 'Account updated successfully.');
     } catch (err) {
@@ -159,7 +169,7 @@ export default function ProfileScreen() {
           password: currentPassword.trim(),
           new_password: newPassword.trim(),
         });
-        
+
         if (response.data.success) {
           const updatedUser = {
             ...user,
@@ -167,7 +177,7 @@ export default function ProfileScreen() {
           };
           await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
           setUser(updatedUser);
-          
+
           setIsPasswordModalOpen(false);
           setCurrentPassword('');
           setNewPassword('');
@@ -224,7 +234,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Profile Card Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
@@ -240,15 +250,15 @@ export default function ProfileScreen() {
             <Text style={styles.profileSubMetaText}>Age: {user.age} · Gender: {user.gender}</Text>
             <View style={styles.leagueBadge}>
               {LEAGUE_BADGES[getLeagueBadge(currentStreak)] ? (
-                <Image 
-                  source={LEAGUE_BADGES[getLeagueBadge(currentStreak)]} 
-                  style={{ width: 20, height: 20, borderRadius: getLeagueBadge(currentStreak) === 'aurora' ? 4 : 0 }} 
+                <Image
+                  source={LEAGUE_BADGES[getLeagueBadge(currentStreak)]}
+                  style={{ width: 20, height: 20, borderRadius: getLeagueBadge(currentStreak) === 'aurora' ? 4 : 0 }}
                   resizeMode="contain"
                 />
               ) : (
                 <FontAwesome5 name="fire" size={12} color="#EA580C" />
               )}
-              <Text style={styles.leagueBadgeText}>{getLeagueBadge(currentStreak)}</Text>
+              <Text style={styles.leagueBadgeText}>{LEAGUE_NAMES[getLeagueBadge(currentStreak)] || getLeagueBadge(currentStreak)}</Text>
             </View>
           </View>
         </View>
@@ -266,8 +276,20 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* Account Security Card */}
+        {/* Account Settings Card */}
         <View style={styles.settingsCard}>
+          <TouchableOpacity style={styles.settingsRow} onPress={() => router.push('/about')}>
+            <Text style={styles.settingsLabel}>About Us</Text>
+            <FontAwesome5 name="chevron-right" size={14} color="#94A3B8" />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+
+          <TouchableOpacity style={styles.settingsRow} onPress={() => router.push('/contact')}>
+            <Text style={styles.settingsLabel}>Contact Us</Text>
+            <FontAwesome5 name="chevron-right" size={14} color="#94A3B8" />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+
           <TouchableOpacity style={styles.settingsRow} onPress={() => setIsPasswordModalOpen(true)}>
             <Text style={styles.settingsLabel}>Update Password</Text>
             <FontAwesome5 name="chevron-right" size={14} color="#94A3B8" />
@@ -441,11 +463,13 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      <CustomAlert 
-        visible={alertVisible} 
-        title={alertTitle} 
-        message={alertMessage} 
-        onClose={() => setAlertVisible(false)} 
+
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        onClose={() => setAlertVisible(false)}
       />
 
     </SafeAreaView>
@@ -788,4 +812,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
+
 });

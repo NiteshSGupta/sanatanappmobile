@@ -1,21 +1,115 @@
 /* eslint-disable react-hooks/immutability */
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle,
-  withTiming, 
-  useAnimatedProps,
-  Easing,
-  withRepeat
-} from 'react-native-reanimated';
-import { useFocusEffect, useRouter } from 'expo-router';
-import api from '../../utils/api';
 import CustomAlert from '../../components/CustomAlert';
+import api from '../../utils/api';
+
+const LEAGUE_BADGES: { [key: string]: any } = {
+  seed: require('../../../assets/leaque-images/seed.png'),
+  sprout: require('../../../assets/leaque-images/sprout.png'),
+  frozen: require('../../../assets/leaque-images/frozen.png'),
+  bloom: require('../../../assets/leaque-images/bloom.png'),
+  season: require('../../../assets/leaque-images/season.png'),
+  aurora: require('../../../assets/leaque-images/aurora.png'),
+  brahmachari: require('../../../assets/leaque-images/brahmacharya.png'),
+};
+
+interface LeagueDetail {
+  id: string;
+  emoji: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  progressText: string;
+  milestones: string[];
+  reqDays: number;
+}
+
+const LEAGUE_DETAILS: LeagueDetail[] = [
+  {
+    id: 'seed',
+    emoji: '🌱',
+    title: 'Seed',
+    subtitle: 'THE BEGINNING',
+    description: 'Every great journey starts with a single decision. Your commitment has been planted, and the foundation for a stronger mind begins today.',
+    progressText: 'days to Sprout',
+    milestones: ['Started your journey', 'Built your first habit', 'Took the first step toward discipline'],
+    reqDays: 0,
+  },
+  {
+    id: 'sprout',
+    emoji: '🌱',
+    title: 'Sprout',
+    subtitle: 'THE ROOTS',
+    description: 'Your discipline has taken root. Daily actions are becoming habits, and your mind is learning to choose growth over impulses.',
+    progressText: 'days to Frozen',
+    milestones: ['7-day streak completed', 'Daily routine becoming consistent', 'Improved self-control'],
+    reqDays: 7,
+  },
+  {
+    id: 'frozen',
+    emoji: '❄️',
+    title: 'Frozen',
+    subtitle: 'THE TEST',
+    description: 'Growth continues even through difficult days. Like a bud surviving winter, your discipline is becoming stronger under pressure.',
+    progressText: 'days to Bloom',
+    milestones: ['21-day milestone', 'Better urge control', 'Greater emotional resilience'],
+    reqDays: 21,
+  },
+  {
+    id: 'bloom',
+    emoji: '🌸',
+    title: 'Bloom',
+    subtitle: 'THE ASCENT',
+    description: 'Weeks of discipline have begun to blossom into lasting change. Your confidence grows as your mind becomes calmer and more focused.',
+    progressText: 'days to Season',
+    milestones: ['30-day streak milestone', 'Heightened mental clarity', 'Increased energy and confidence'],
+    reqDays: 40,
+  },
+  {
+    id: 'season',
+    emoji: '🍂',
+    title: 'Season',
+    subtitle: 'THE BALANCE',
+    description: 'True discipline survives every season. Whether life is easy or difficult, you continue moving forward with consistency.',
+    progressText: 'days to Aurora',
+    milestones: ['Built lasting habits', 'Greater emotional balance', 'Strong daily discipline'],
+    reqDays: 90,
+  },
+  {
+    id: 'aurora',
+    emoji: '🌌',
+    title: 'Aurora',
+    subtitle: 'THE LIGHT',
+    description: 'Your consistency now shines from within. Discipline is no longer a challenge—it has become part of who you are.',
+    progressText: 'days to Brahmachari',
+    milestones: ['One of the top achievers', 'Exceptional consistency', 'Inspiring long-term commitment'],
+    reqDays: 180,
+  },
+  {
+    id: 'brahmachari',
+    emoji: '🏹',
+    title: 'Brahmachari',
+    subtitle: 'THE CONTROL',
+    description: 'Discipline is no longer something you practice—it is part of your identity. Your journey now inspires others to begin their own.',
+    progressText: 'Maximum League Achieved',
+    milestones: ['365-day milestone completed', 'Master of self-discipline', 'Highest league unlocked'],
+    reqDays: 365,
+  },
+];
 
 const toLocalDateString = (d: Date) => {
   const pad = (n: number) => n.toString().padStart(2, '0');
@@ -37,7 +131,7 @@ const GAUGE_SPAN = 0.75; // 3/4 circle arc
 
 export default function JourneyScreen() {
   const [user, setUser] = useState<any>(null);
-  
+
   // Master Streak
   const [streakStart, setStreakStart] = useState<Date | null>(null);
   const [streakDays, setStreakDays] = useState(0);
@@ -52,11 +146,11 @@ export default function JourneyScreen() {
 
   const [dincharyaCompletedCount, setDincharyaCompletedCount] = useState(0);
   const [dincharyaTotalCount, setDincharyaTotalCount] = useState(0);
-  
+
   const [isRelapseModalOpen, setIsRelapseModalOpen] = useState(false);
   const [targetGoalDays, setTargetGoalDays] = useState(90);
   const [startReason, setStartReason] = useState('');
-  
+
   // Custom Alert States
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertTitle, setAlertTitle] = useState('');
@@ -90,6 +184,8 @@ export default function JourneyScreen() {
   const glowValue = useSharedValue(1);
 
   const [isUrgeModalOpen, setIsUrgeModalOpen] = useState(false);
+  const [isLeagueModalOpen, setIsLeagueModalOpen] = useState(false);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('seed');
   const [isUrgeActive, setIsUrgeActive] = useState(false);
   const [urgeElapsed, setUrgeElapsed] = useState(0);
   const [urgeCycles, setUrgeCycles] = useState(0);
@@ -113,64 +209,64 @@ export default function JourneyScreen() {
   // League computation matching Figma layout with science details
   const getLeagueData = useCallback((currentDays: number) => {
     if (currentDays < 7) {
-      return { 
-        current: 'seed', 
-        next: 'sprout', 
-        nextDaysReq: 7, 
+      return {
+        current: 'seed',
+        next: 'sprout',
+        nextDaysReq: 7,
         icon: 'seedling',
         stage: 'Acute Withdrawal',
         energy: 'Virya (Physical)'
       };
     } else if (currentDays < 21) {
-      return { 
-        current: 'sprout', 
-        next: 'frozen', 
-        nextDaysReq: 21, 
+      return {
+        current: 'sprout',
+        next: 'frozen',
+        nextDaysReq: 21,
         icon: 'medal',
         stage: 'Habit Formation',
         energy: 'Prana (Vitality)'
       };
     } else if (currentDays < 40) {
-      return { 
-        current: 'frozen', 
-        next: 'bloom', 
-        nextDaysReq: 40, 
+      return {
+        current: 'frozen',
+        next: 'bloom',
+        nextDaysReq: 40,
         icon: 'shield-alt',
         stage: 'Discipline',
         energy: 'Tejas (Radiance)'
       };
     } else if (currentDays < 90) {
-      return { 
-        current: 'bloom', 
-        next: 'season', 
-        nextDaysReq: 90, 
+      return {
+        current: 'bloom',
+        next: 'season',
+        nextDaysReq: 90,
         icon: 'crown',
         stage: 'Dopamine Reset',
         energy: 'Ojas (Clarity)'
       };
     } else if (currentDays < 180) {
-      return { 
-        current: 'season', 
-        next: 'aurora', 
-        nextDaysReq: 180, 
+      return {
+        current: 'season',
+        next: 'aurora',
+        nextDaysReq: 180,
         icon: 'gem',
         stage: 'Deep Healing',
         energy: 'Spiritual Alignment'
       };
     } else if (currentDays < 365) {
-      return { 
-        current: 'aurora', 
-        next: 'brahmachari', 
-        nextDaysReq: 365, 
+      return {
+        current: 'aurora',
+        next: 'brahmachari',
+        nextDaysReq: 365,
         icon: 'mountain',
         stage: 'Transmutation',
         energy: 'Profound Peace'
       };
     } else {
-      return { 
-        current: 'brahmachari', 
-        next: 'None', 
-        nextDaysReq: 0, 
+      return {
+        current: 'brahmachari',
+        next: 'None',
+        nextDaysReq: 0,
         icon: 'om',
         stage: 'Identity Restructured',
         energy: 'Atman (Mastery)'
@@ -188,14 +284,14 @@ export default function JourneyScreen() {
         parsedUser = JSON.parse(userData);
         setUser(parsedUser);
       }
-      
+
       // Master Streak Migration & Loading
       let savedStreakStart = await AsyncStorage.getItem('ojas_streak_start');
       if (!savedStreakStart) {
         // Fallback to legacy journey start for existing users
         const legacyStart = await AsyncStorage.getItem('ojas_journey_start');
         if (legacyStart) {
-          savedStreakStart = legacyStart; 
+          savedStreakStart = legacyStart;
           await AsyncStorage.setItem('ojas_streak_start', savedStreakStart);
         }
       }
@@ -299,7 +395,7 @@ export default function JourneyScreen() {
     let interval: ReturnType<typeof setInterval>;
     interval = setInterval(() => {
       const now = new Date();
-      
+
       // Update Master Streak
       if (streakStart) {
         const streakDiff = now.getTime() - streakStart.getTime();
@@ -310,7 +406,7 @@ export default function JourneyScreen() {
           setStreakSeconds(Math.floor((streakDiff / 1000) % 60).toString().padStart(2, '0'));
         }
       }
-      
+
       // Update Active Challenge
       if (challengeStart && isChallengeActive) {
         const diff = now.getTime() - challengeStart.getTime();
@@ -348,9 +444,9 @@ export default function JourneyScreen() {
       const userData = await AsyncStorage.getItem('user');
       if (!userData) return;
       const parsedUser = JSON.parse(userData);
-      
+
       const goal = updatedGoal !== undefined ? updatedGoal : targetGoalDays;
-      
+
       let relapsesToSend = updatedRelapses;
       if (!relapsesToSend) {
         const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
@@ -406,7 +502,7 @@ export default function JourneyScreen() {
           device_info: 'React Native App',
         });
       }
-      
+
       showCustomAlert('Success: Challenge Initiated! 🛡️', "Your reboot cycle has begun. Focus on today's Dincharya tasks.");
     } catch (e) {
       console.error(e);
@@ -454,11 +550,11 @@ export default function JourneyScreen() {
   const claimVictory = async () => {
     try {
       setIsGoalCompletedModalOpen(false);
-      
+
       // Move to history
       const storedHistory = await AsyncStorage.getItem('ojas_goals_history');
       const history = storedHistory ? JSON.parse(storedHistory) : [];
-      
+
       const newArchivedGoal = {
         id: Date.now().toString(),
         target_days: targetGoalDays,
@@ -467,28 +563,28 @@ export default function JourneyScreen() {
         start_reason: startReason,
         status: 'completed',
       };
-      
+
       const updatedHistory = [...history, newArchivedGoal];
       await AsyncStorage.setItem('ojas_goals_history', JSON.stringify(updatedHistory));
-      
+
       // Clear active challenge states (do not reset streak!)
       setIsChallengeActive(false);
       setChallengeStart(null);
       setChallengeDays(0);
-      
+
       await AsyncStorage.setItem('ojas_challenge_active', 'false');
       await AsyncStorage.removeItem('ojas_challenge_start');
       await AsyncStorage.removeItem('ojas_goal_start_reason');
-      
+
       // We do NOT reset active relapse list here (Streak continues)
-      
+
       // Clear all Dincharya history for active cycle to start clean
       const keys = await AsyncStorage.getAllKeys();
       const dincharyaKeys = keys.filter(k => k.startsWith('dincharya_'));
       if (dincharyaKeys.length > 0) {
         await AsyncStorage.multiRemove(dincharyaKeys);
       }
-      
+
       // Sync to server
       if (user && user.username) {
         await api.post('/sync', {
@@ -502,7 +598,7 @@ export default function JourneyScreen() {
           relapses: []
         });
       }
-      
+
       showCustomAlert('Success: Congratulations! 🎉', 'Victory archived. Start your next phase when ready.');
     } catch (e) {
       console.error(e);
@@ -529,7 +625,7 @@ export default function JourneyScreen() {
       };
       relapses.push(newRelapse);
       await AsyncStorage.setItem('ojas_relapses', JSON.stringify(relapses));
-      
+
       // Sync to backend
       await syncGoalAndRelapses(targetGoalDays, relapses);
     } catch (e) {
@@ -539,11 +635,11 @@ export default function JourneyScreen() {
     // Master streak always resets on relapse
     setStreakStart(now);
     await AsyncStorage.setItem('ojas_streak_start', now.toISOString());
-    
+
     // The active challenge continues despite a slip. It acts as a container for these events!
     // We only reset the master streak, which was handled above.
     setIsRelapseModalOpen(false);
-    
+
     // Reset state
     setSelectedTrigger('');
     setSelectedLocation('');
@@ -631,7 +727,7 @@ export default function JourneyScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -646,13 +742,13 @@ export default function JourneyScreen() {
         {/* Hero Circular Progress Gauge Card */}
         <View style={styles.heroCard}>
           <Text style={styles.streakLabel}>SANKALPA DURATION</Text>
-          
+
           <View style={styles.circleWrapper}>
             {/* Om Background Watermark */}
             <View style={styles.omWatermark}>
               <FontAwesome5 name="om" size={120} color="#EA580C" style={{ opacity: 0.05 }} />
             </View>
-            
+
             {/* Svg Semi-Circle Ring */}
             <Svg width={CIRCLE_RADIUS * 2 + 20} height={CIRCLE_RADIUS * 2 + 20} viewBox="0 0 200 200" style={styles.svgRotation}>
               <Circle
@@ -673,7 +769,6 @@ export default function JourneyScreen() {
 
             {/* Inner text */}
             <View style={styles.circleCenter}>
-              
               {streakStart ? (
                 <>
                   <Text style={styles.daysText}>{streakDays}</Text>
@@ -685,21 +780,47 @@ export default function JourneyScreen() {
                   <Text style={styles.daysLabel}>Awaiting</Text>
                 </>
               )}
-
-              {!isChallengeActive ? (
-                <Animated.View style={animatedGlowStyle}>
-                  <TouchableOpacity style={styles.startChallengeBtn} onPress={() => setIsStartChallengeModalOpen(true)}>
-                    <Text style={styles.startBtnGlowText}>START</Text>
-                    <Text style={styles.startBtnSubText}>CHALLENGE</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              ) : (
-                <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
-                  <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
-                  <Text style={styles.goalPillText}>Challenge: {challengeDays}/{targetGoalDays}d</Text>
-                </TouchableOpacity>
-              )}
             </View>
+
+            {/* League Badge positioned half-in, half-out at the bottom center border */}
+            {LEAGUE_BADGES[getLeagueData(streakStart ? streakDays : 0).current] && (
+              <TouchableOpacity
+                onPress={() => {
+                  const curLeague = getLeagueData(streakStart ? streakDays : 0).current;
+                  setSelectedLeagueId(curLeague);
+                  setIsLeagueModalOpen(true);
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: -32,
+                  zIndex: 10
+                }}
+                activeOpacity={0.8}
+              >
+                <Image
+                  source={LEAGUE_BADGES[getLeagueData(streakStart ? streakDays : 0).current]}
+                  style={{ width: 64, height: 64 }}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Challenge Pill / Button under the league icon */}
+          <View style={{ alignItems: 'center', marginTop: 36, marginBottom: 8 }}>
+            {!isChallengeActive ? (
+              <Animated.View style={animatedGlowStyle}>
+                <TouchableOpacity style={styles.startChallengeBtn} onPress={() => setIsStartChallengeModalOpen(true)}>
+                  <Text style={styles.startBtnGlowText}>START</Text>
+                  <Text style={styles.startBtnSubText}>CHALLENGE</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
+                <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
+                <Text style={styles.goalPillText}>Challenge: {challengeDays}/{targetGoalDays}d</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={{ width: '100%', alignItems: 'center', marginTop: 12 }}>
@@ -746,8 +867,8 @@ export default function JourneyScreen() {
               <View>
                 <Text style={styles.leagueTitle}>{"TODAY'S DINCHARYA"}</Text>
                 <Text style={styles.activeLeagueText}>
-                  {dincharyaTotalCount > 0 
-                    ? `${dincharyaCompletedCount} out of ${dincharyaTotalCount} Tasks Completed` 
+                  {dincharyaTotalCount > 0
+                    ? `${dincharyaCompletedCount} out of ${dincharyaTotalCount} Tasks Completed`
                     : 'No Routine Set Today'}
                 </Text>
               </View>
@@ -769,7 +890,7 @@ export default function JourneyScreen() {
               <FontAwesome5 name="biohazard" size={24} color="#EF4444" />
             </View>
             <Text style={styles.modalTitle}>Reflective Reboot</Text>
-            
+
             {/* Step Indicators */}
             <View style={styles.stepIndicator}>
               <View style={[styles.stepDot, relapseStep >= 1 && styles.stepDotActive]} />
@@ -867,7 +988,7 @@ export default function JourneyScreen() {
               <View style={{ width: '100%', alignItems: 'center' }}>
                 <Text style={styles.modalTitleLeft}>Step 3: Acknowledge & Reflect</Text>
                 <Text style={styles.modalDesc}>Set the time of urge and write down one lesson so this slip becomes a step forward.</Text>
-                
+
                 <Text style={styles.relapseInputLabel}>TIME OF DAY</Text>
                 <View style={styles.timeRow}>
                   {['Morning', 'Afternoon', 'Evening', 'Late Night'].map((tod) => (
@@ -942,12 +1063,12 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {startGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' : 
-               startGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' : 
-               startGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' : 
-               startGoalDays === 90 ? '90 Days · Season Challenge 🍂' : 
-               startGoalDays === 180 ? '180 Days · Aurora Challenge ✨' : 
-               '365 Days · Brahmachari Challenge 🏆'}
+              {startGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
+                startGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
+                  startGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
+                    startGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
+                      startGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
+                        '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
@@ -961,8 +1082,8 @@ export default function JourneyScreen() {
             />
 
             <View style={styles.modalBtnRow}>
-              <TouchableOpacity 
-                style={[styles.modalBtnSecondary, { flex: 1 }]} 
+              <TouchableOpacity
+                style={[styles.modalBtnSecondary, { flex: 1 }]}
                 onPress={() => {
                   setIsStartChallengeModalOpen(false);
                   setStartReasonInput('');
@@ -970,8 +1091,8 @@ export default function JourneyScreen() {
               >
                 <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]} 
+              <TouchableOpacity
+                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]}
                 onPress={handleStartChallenge}
               >
                 <Text style={styles.modalBtnPrimaryText}>Begin Challenge</Text>
@@ -1007,12 +1128,12 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {editGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' : 
-               editGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' : 
-               editGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' : 
-               editGoalDays === 90 ? '90 Days · Season Challenge 🍂' : 
-               editGoalDays === 180 ? '180 Days · Aurora Challenge ✨' : 
-               '365 Days · Brahmachari Challenge 🏆'}
+              {editGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
+                editGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
+                  editGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
+                    editGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
+                      editGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
+                        '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
@@ -1026,14 +1147,14 @@ export default function JourneyScreen() {
             />
 
             <View style={styles.modalBtnRow}>
-              <TouchableOpacity 
-                style={[styles.modalBtnSecondary, { flex: 1 }]} 
+              <TouchableOpacity
+                style={[styles.modalBtnSecondary, { flex: 1 }]}
                 onPress={() => setIsEditGoalModalOpen(false)}
               >
                 <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]} 
+              <TouchableOpacity
+                style={[styles.modalBtnPrimary, { flex: 1.5, backgroundColor: '#EA580C', marginBottom: 0 }]}
                 onPress={handleEditGoalSave}
               >
                 <Text style={styles.modalBtnPrimaryText}>Save Changes</Text>
@@ -1064,12 +1185,188 @@ export default function JourneyScreen() {
               Claiming your victory will archive this challenge into history and reset your active streak/dincharya/relapses.
             </Text>
 
-            <TouchableOpacity 
-              style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#D97706', marginBottom: 0 }]} 
+            <TouchableOpacity
+              style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#D97706', marginBottom: 0 }]}
               onPress={claimVictory}
             >
               <Text style={styles.modalBtnPrimaryText}>Claim Victory & Restart</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* League Details Bottom Sheet Modal */}
+      <Modal visible={isLeagueModalOpen} transparent animationType="slide" onRequestClose={() => setIsLeagueModalOpen(false)}>
+        <View style={styles.leagueModalOverlay}>
+          <TouchableOpacity
+            style={styles.leagueModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setIsLeagueModalOpen(false)}
+          />
+
+          <View style={styles.leagueModalContent}>
+            {/* Top Drag Indicator Handle */}
+            <View style={styles.leagueModalHandle} />
+
+            {/* Close Button Icon */}
+            <TouchableOpacity
+              style={styles.leagueModalCloseBtn}
+              onPress={() => setIsLeagueModalOpen(false)}
+              activeOpacity={0.7}
+            >
+              <FontAwesome5 name="times" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+
+            {(() => {
+              const selectedLeague = LEAGUE_DETAILS.find(ld => ld.id === selectedLeagueId) || LEAGUE_DETAILS[0];
+
+              // Get active selected league progress
+              const currentStreakDays = streakStart ? streakDays : 0;
+              const currentIndex = LEAGUE_DETAILS.findIndex(l => l.id === selectedLeagueId);
+              const nextLeague = currentIndex !== -1 && currentIndex < LEAGUE_DETAILS.length - 1
+                ? LEAGUE_DETAILS[currentIndex + 1]
+                : null;
+
+              let percent = 0;
+              let text = '';
+              let leftVal = '0 days';
+              let rightVal = '';
+
+              if (selectedLeagueId === 'brahmachari') {
+                percent = 100;
+                text = 'Maximum League Achieved';
+                leftVal = '365+ days';
+                rightVal = 'Max';
+              } else {
+                if (currentStreakDays >= selectedLeague.reqDays) {
+                  if (nextLeague && currentStreakDays < nextLeague.reqDays) {
+                    const diff = nextLeague.reqDays - selectedLeague.reqDays;
+                    const progressed = currentStreakDays - selectedLeague.reqDays;
+                    percent = Math.min((progressed / diff) * 100, 100);
+                    const daysLeft = nextLeague.reqDays - currentStreakDays;
+                    text = `${daysLeft} days to ${nextLeague.title}`;
+                    leftVal = `${currentStreakDays} days`;
+                    rightVal = `${nextLeague.reqDays} days → ${nextLeague.title}`;
+                  } else {
+                    percent = 100;
+                    text = 'League Completed';
+                    leftVal = `${selectedLeague.reqDays} days`;
+                    rightVal = 'Achieved';
+                  }
+                } else {
+                  percent = 0;
+                  text = `${selectedLeague.reqDays - currentStreakDays} days to unlock`;
+                  leftVal = `${currentStreakDays} days`;
+                  rightVal = `${selectedLeague.reqDays} days → ${selectedLeague.title}`;
+                }
+              }
+
+              const isAchieved = currentStreakDays >= selectedLeague.reqDays;
+
+              return (
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.leagueModalScroll}>
+
+                  {/* Premium Header Card */}
+                  <View style={styles.leagueModalHeaderCard}>
+                    <Image
+                      source={LEAGUE_BADGES[selectedLeague.id]}
+                      style={{ width: 80, height: 80, marginBottom: 16 }}
+                      resizeMode="contain"
+                    />
+
+                    <Text style={styles.leagueModalTitle}>
+                      {selectedLeague.title}
+                    </Text>
+
+                    <Text style={styles.leagueModalSubtitle}>
+                      {selectedLeague.subtitle}
+                    </Text>
+
+                    <Text style={styles.leagueModalDescription}>
+                      {selectedLeague.description}
+                    </Text>
+
+                    {/* Progress Bar Container */}
+                    <View style={styles.leagueModalProgressBox}>
+                      <View style={styles.leagueModalProgressLabels}>
+                        <Text style={styles.leagueModalProgVal}>{leftVal}</Text>
+                        <Text style={styles.leagueModalProgVal}>{rightVal}</Text>
+                      </View>
+                      <View style={styles.leagueModalProgressBarTrack}>
+                        <View style={[styles.leagueModalProgressBarFill, { width: `${percent}%` }]} />
+                      </View>
+                      <Text style={styles.leagueModalProgressStatusText}>
+                        {text}
+                      </Text>
+                    </View>
+
+                    {/* Milestone List */}
+                    <View style={styles.leagueModalMilestoneList}>
+                      {selectedLeague.milestones.map((m, idx) => (
+                        <View key={idx} style={styles.leagueModalMilestoneRow}>
+                          <FontAwesome5
+                            name="check-circle"
+                            size={13}
+                            color={isAchieved ? '#EA580C' : '#94A3B8'}
+                            style={styles.leagueModalMilestoneCheck}
+                          />
+                          <Text style={[styles.leagueModalMilestoneText, !isAchieved && styles.leagueModalMilestoneLockedText]}>
+                            {m}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* ALL LEAGUES List */}
+                  <Text style={styles.leagueModalSectionTitle}>ALL LEAGUES</Text>
+
+                  <View style={styles.leagueModalAllLeaguesContainer}>
+                    {LEAGUE_DETAILS.map((l) => {
+                      const isSelected = selectedLeagueId === l.id;
+                      const isReached = currentStreakDays >= l.reqDays;
+
+                      return (
+                        <TouchableOpacity
+                          key={l.id}
+                          style={[styles.leagueModalLeagueItem, isSelected && styles.leagueModalLeagueItemActive]}
+                          onPress={() => setSelectedLeagueId(l.id)}
+                        >
+                          <View style={[
+                            styles.leagueModalItemIconBg,
+                            isReached ? styles.leagueModalItemIconBgReached : styles.leagueModalItemIconBgLocked
+                          ]}>
+                            <Image
+                              source={LEAGUE_BADGES[l.id]}
+                              style={{ width: 26, height: 26, opacity: isReached ? 1 : 0.6 }}
+                              resizeMode="contain"
+                            />
+                          </View>
+
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={[styles.leagueModalItemName, isSelected && styles.leagueModalItemNameActive]}>
+                              {l.title}
+                            </Text>
+                            <Text style={styles.leagueModalItemSubtitle}>
+                              {l.subtitle}
+                            </Text>
+                          </View>
+
+                          <View>
+                            {isReached ? (
+                              <Text style={styles.leagueModalItemStatusReached}>✓ Reached</Text>
+                            ) : (
+                              <Text style={styles.leagueModalItemStatusLocked}>Locked</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                </ScrollView>
+              );
+            })()}
           </View>
         </View>
       </Modal>
@@ -1080,7 +1377,7 @@ export default function JourneyScreen() {
           <TouchableOpacity style={styles.closeBtn} onPress={closeUrgeSurfer}>
             <FontAwesome5 name="times" size={24} color="#94A3B8" />
           </TouchableOpacity>
-          
+
           <View style={styles.urgeContent}>
             <View style={styles.urgeHeaderInfo}>
               <Text style={styles.urgeTitle}>Urge Surfer</Text>
@@ -1122,15 +1419,15 @@ export default function JourneyScreen() {
 
             {/* Action Buttons */}
             <View style={styles.urgeActionContainer}>
-              <TouchableOpacity 
-                style={[styles.urgeBtnStop, urgeActiveBtnStyle(isUrgeActive)]} 
+              <TouchableOpacity
+                style={[styles.urgeBtnStop, urgeActiveBtnStyle(isUrgeActive)]}
                 onPress={() => setIsUrgeActive(!isUrgeActive)}
               >
                 <Text style={isUrgeActive ? styles.urgeBtnStopText : styles.urgeBtnStartText}>
                   {isUrgeActive ? 'Stop' : 'Start'}
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.urgeBtnReset} onPress={resetUrgeSurfer}>
                 <Text style={styles.urgeBtnResetText}>Reset</Text>
               </TouchableOpacity>
@@ -1139,11 +1436,11 @@ export default function JourneyScreen() {
         </View>
       </Modal>
 
-      <CustomAlert 
-        visible={alertVisible} 
-        title={alertTitle} 
-        message={alertMessage} 
-        onClose={() => setAlertVisible(false)} 
+      <CustomAlert
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        onClose={() => setAlertVisible(false)}
       />
 
     </SafeAreaView>
@@ -1969,5 +2266,200 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginBottom: 20,
     paddingHorizontal: 10,
+  },
+  leagueModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  leagueModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  leagueModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '92%',
+    paddingTop: 14,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  leagueModalCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    padding: 8,
+    zIndex: 20,
+  },
+  leagueModalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  leagueModalScroll: {
+    paddingBottom: 32,
+  },
+  leagueModalHeaderCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+    marginBottom: 20,
+    marginTop: 12,
+  },
+  leagueModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#EA580C',
+    textAlign: 'center',
+  },
+  leagueModalSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 1.5,
+    marginTop: 4,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  leagueModalDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#475569',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    marginBottom: 20,
+  },
+  leagueModalProgressBox: {
+    width: '100%',
+    paddingHorizontal: 4,
+    marginBottom: 16,
+  },
+  leagueModalProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  leagueModalProgVal: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  leagueModalProgressBarTrack: {
+    height: 6,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 3,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  leagueModalProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#EA580C',
+    borderRadius: 3,
+  },
+  leagueModalProgressStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#EA580C',
+    textAlign: 'right',
+    marginTop: 6,
+  },
+  leagueModalMilestoneList: {
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: '#FFEDD5',
+    paddingTop: 8,
+  },
+  leagueModalMilestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 237, 213, 0.5)',
+  },
+  leagueModalMilestoneCheck: {
+    marginRight: 10,
+  },
+  leagueModalMilestoneText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    flex: 1,
+  },
+  leagueModalMilestoneLockedText: {
+    color: '#94A3B8',
+  },
+  leagueModalSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  leagueModalAllLeaguesContainer: {
+    width: '100%',
+    gap: 8,
+  },
+  leagueModalLeagueItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  leagueModalLeagueItemActive: {
+    borderColor: '#EA580C',
+    backgroundColor: '#FFF7ED',
+  },
+  leagueModalItemIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  leagueModalItemIconBgReached: {
+    backgroundColor: '#FFEDD5',
+  },
+  leagueModalItemIconBgLocked: {
+    backgroundColor: '#F1F5F9',
+  },
+  leagueModalItemName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  leagueModalItemNameActive: {
+    color: '#EA580C',
+  },
+  leagueModalItemSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  leagueModalItemStatusReached: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  leagueModalItemStatusLocked: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
   },
 });

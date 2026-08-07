@@ -377,13 +377,13 @@ export default function ReportsScreen() {
 
   // League details for the League Journey section
   const LEAGUES = [
-    { name: 'seed', days: '0+ days', req: 0, icon: 'seedling', image: require('../../../assets/leaque-images/seed.png'), imgSize: 26 },
-    { name: 'sprout', days: '7+ days', req: 7, icon: 'medal', image: require('../../../assets/leaque-images/sprout.png'), imgSize: 26 },
-    { name: 'frozen', days: '21+ days', req: 21, icon: 'shield-alt', image: require('../../../assets/leaque-images/frozen.png'), imgSize: 26 },
-    { name: 'bloom', days: '40+ days', req: 40, icon: 'crown', image: require('../../../assets/leaque-images/bloom.png'), imgSize: 26 },
-    { name: 'season', days: '90+ days', req: 90, icon: 'gem', image: require('../../../assets/leaque-images/season.png'), imgSize: 26 },
-    { name: 'aurora', days: '180+ days', req: 180, icon: 'mountain', image: require('../../../assets/leaque-images/aurora.png'), imgSize: 26, imgStyle: { borderRadius: 6 } },
-    { name: 'brahmachari', days: '365+ days', req: 365, icon: 'om', image: require('../../../assets/leaque-images/brahmacharya.png'), imgSize: 26 },
+    { name: 'Seed', days: '0+ days', req: 0, icon: 'seedling', image: require('../../../assets/leaque-images/seed.png'), imgSize: 26 },
+    { name: 'Sprout', days: '7+ days', req: 7, icon: 'medal', image: require('../../../assets/leaque-images/sprout.png'), imgSize: 26 },
+    { name: 'Frozen', days: '21+ days', req: 21, icon: 'shield-alt', image: require('../../../assets/leaque-images/frozen.png'), imgSize: 26 },
+    { name: 'Bloom', days: '40+ days', req: 40, icon: 'crown', image: require('../../../assets/leaque-images/bloom.png'), imgSize: 26 },
+    { name: 'Season', days: '90+ days', req: 90, icon: 'gem', image: require('../../../assets/leaque-images/season.png'), imgSize: 26 },
+    { name: 'Aurora', days: '180+ days', req: 180, icon: 'mountain', image: require('../../../assets/leaque-images/aurora.png'), imgSize: 26, imgStyle: { borderRadius: 6 } },
+    { name: 'Brahmachari', days: '365+ days', req: 365, icon: 'om', image: require('../../../assets/leaque-images/brahmacharya.png'), imgSize: 26 },
   ];
 
   // Helper to calculate progress for active league
@@ -679,7 +679,7 @@ export default function ReportsScreen() {
                       {l.name} {isActiveLeague && <Text style={styles.youIndicator}>← you</Text>}
                     </Text>
                     
-                    {isActiveLeague && l.name !== 'brahmachari' && (
+                    {isActiveLeague && l.name !== 'Brahmachari' && (
                       <View style={styles.leagueProgressContainer}>
                         <View style={styles.leagueProgressTrack}>
                           <View style={[styles.leagueProgressFill, { width: `${activeProgress}%` }]} />
