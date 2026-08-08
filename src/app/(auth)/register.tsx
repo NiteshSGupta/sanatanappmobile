@@ -2,7 +2,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../components/CustomAlert';
 import api from '../../utils/api';
@@ -83,6 +83,9 @@ export default function RegisterScreen() {
       });
 
       if (response.data.success) {
+        // Clear all previous local data to prevent cross-user leakage
+        await AsyncStorage.clear();
+
         const userObj = { 
           username: username.trim(), 
           name: name.trim(), 
@@ -94,10 +97,6 @@ export default function RegisterScreen() {
 
         // Start challenge status as inactive initially
         await AsyncStorage.setItem('ojas_challenge_active', 'false');
-        await AsyncStorage.removeItem('ojas_challenge_start');
-        
-        // Ensure Master Streak is completely blank initially
-        await AsyncStorage.removeItem('ojas_streak_start');
 
         router.replace('/(tabs)');
       } else {
@@ -120,9 +119,10 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           {/* Logo / Heading */}
           <View style={styles.headerContainer}>
-            <View style={styles.iconWrapper}>
-              <FontAwesome5 name="om" size={32} color="#FFFFFF" />
-            </View>
+            <Image 
+              source={require('../../../assets/images/logo.png')} 
+              style={styles.iconWrapper} 
+            />
             <Text style={styles.title}>Kaivalya</Text>
             <Text style={styles.subtitle}>Begin your journey of self-mastery</Text>
           </View>

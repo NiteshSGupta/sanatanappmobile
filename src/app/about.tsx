@@ -27,7 +27,7 @@ export default function AboutScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
           <FontAwesome5 name="arrow-left" size={18} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Kaivalya</Text>
+        <Text style={styles.headerTitle}>About Kaivalya</Text>
         <View style={styles.headerPlaceholder} />
       </View>
 

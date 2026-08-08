@@ -41,34 +41,7 @@ export default function ReportsScreen() {
       const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
-      if (!isActive) {
-        setCurrentStreak(0);
-        setChallengeProgressDays(0);
-        setSuccessRate(0);
-        
-        const savedBest = await AsyncStorage.getItem('ojas_best_streak');
-        setBestStreak(savedBest ? parseInt(savedBest) : 0);
-
-        const today = new Date();
-        const last7Days: DayStatus[] = [];
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date();
-          d.setDate(today.getDate() - i);
-          const dateStr = toLocalDateString(d);
-          const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-          last7Days.push({
-            dayName,
-            dateStr,
-            completed: false,
-            tasksCount: 0,
-            completedCount: 0,
-          });
-        }
-        setWeeklyStatus(last7Days);
-        return;
-      }
-
-      // 1. Calculate Master Streak and Challenge Progress
+      // 1. Calculate Master Streak ALWAYS (only resets on relapse)
       const savedStreakStart = await AsyncStorage.getItem('ojas_streak_start');
       let streakDays = 0;
       if (savedStreakStart) {
@@ -79,6 +52,53 @@ export default function ReportsScreen() {
         }
       }
       setCurrentStreak(streakDays);
+
+      // Best streak tracking
+      const savedBest = await AsyncStorage.getItem('ojas_best_streak');
+      let best = streakDays;
+      if (savedBest) {
+        best = Math.max(parseInt(savedBest), streakDays);
+      }
+      setBestStreak(best);
+      await AsyncStorage.setItem('ojas_best_streak', best.toString());
+
+      if (!isActive) {
+        setChallengeProgressDays(0);
+        setSuccessRate(0);
+
+        const today = new Date();
+        const last7DaysKeys: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          const dateStr = toLocalDateString(d);
+          last7DaysKeys.push(`dincharya_${dateStr}`);
+        }
+        const pairs = last7DaysKeys.length > 0 ? await AsyncStorage.multiGet(last7DaysKeys) : [];
+        const taskMap = Object.fromEntries(pairs);
+
+        const last7Days: DayStatus[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          const dateStr = toLocalDateString(d);
+          const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+          
+          const stored = taskMap[`dincharya_${dateStr}`];
+          const dateTasks = stored ? JSON.parse(stored) : [];
+          const completed = dateTasks.length > 0 && dateTasks.every((t: any) => t.completed);
+          
+          last7Days.push({
+            dayName,
+            dateStr,
+            completed,
+            tasksCount: dateTasks.length,
+            completedCount: dateTasks.filter((t: any) => t.completed).length,
+          });
+        }
+        setWeeklyStatus(last7Days);
+        return;
+      }
 
       const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
       let cDays = 0;
@@ -91,15 +111,6 @@ export default function ReportsScreen() {
         }
       }
       setChallengeProgressDays(cDays);
-
-      // Best streak tracking
-      const savedBest = await AsyncStorage.getItem('ojas_best_streak');
-      let best = streakDays;
-      if (savedBest) {
-        best = Math.max(parseInt(savedBest), streakDays);
-      }
-      setBestStreak(best);
-      await AsyncStorage.setItem('ojas_best_streak', best.toString());
 
       // 2. Scan last 7 days for tasks (optimized batch query)
       const today = new Date();
@@ -186,12 +197,6 @@ export default function ReportsScreen() {
       const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
-      if (!isActive) {
-        setRelapses([]);
-        setRelapseStats({ week: 0, month: 0, year: 0 });
-        return;
-      }
-
       const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
       const journeyStartObj = savedStart ? new Date(savedStart) : null;
 
@@ -199,8 +204,9 @@ export default function ReportsScreen() {
       if (storedRelapses) {
         const list = JSON.parse(storedRelapses);
         
-        // Filter current cycle relapses
+        // Filter current cycle relapses if active, else show all history
         const filteredList = list.filter((r: any) => {
+          if (!isActive) return true;
           const rDate = new Date(r.date);
           return journeyStartObj ? rDate >= journeyStartObj : false;
         });

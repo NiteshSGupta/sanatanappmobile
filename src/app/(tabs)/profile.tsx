@@ -204,7 +204,7 @@ export default function ProfileScreen() {
 
   const confirmLogout = async () => {
     setIsLogoutModalOpen(false);
-    await AsyncStorage.removeItem('user');
+    await AsyncStorage.clear();
     router.replace('/(auth)/login');
   };
 

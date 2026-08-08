@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Animated, Platform } from 'react-native';
-import { useNetInfo } from '@react-native-community/netinfo';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useNetInfo } from '@react-native-community/netinfo';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Animated, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface InternetConnectionWrapperProps {
   children: React.ReactNode;
@@ -9,18 +9,18 @@ interface InternetConnectionWrapperProps {
 
 export default function InternetConnectionWrapper({ children }: InternetConnectionWrapperProps) {
   const netInfo = useNetInfo();
-  
+
   // Custom states to ensure we are actually online (ping check)
   const [isInternetActive, setIsInternetActive] = useState<boolean>(true);
   const [checking, setChecking] = useState<boolean>(false);
-  
+
   // Animation for the pulsing offline icon
   const [pulseAnim] = useState(() => new Animated.Value(1));
 
   // Run a ping check to verify true internet connectivity (e.g. DNS resolution/backhaul check)
   const verifyInternet = async () => {
     setChecking(true);
-    
+
     // On Web, use navigator.onLine as a first-class check to avoid CORS failures
     if (Platform.OS === 'web') {
       const online = typeof window !== 'undefined' && window.navigator ? window.navigator.onLine : true;
@@ -32,16 +32,16 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
-      
+
       // Ping an ultra-reliable, lightweight endpoint
       const response = await fetch('https://clients3.google.com/generate_204', {
         method: 'GET',
         signal: controller.signal,
         headers: { 'Cache-Control': 'no-cache' },
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       if (response.ok || response.status === 204) {
         setIsInternetActive(true);
       } else {
@@ -134,7 +134,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
   return (
     <View style={{ flex: 1 }}>
       {children}
-      
+
       <Modal
         visible={!isInternetActive}
         transparent={true}
@@ -149,12 +149,9 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
             </Animated.View>
 
             <Text style={styles.title}>Internet Required</Text>
-            <Text style={styles.description}>
-              This application requires an active internet connection to synchronize your journey. Please connect to the internet to continue.
-            </Text>
 
-            <TouchableOpacity 
-              style={[styles.button, checking && styles.buttonDisabled]} 
+            <TouchableOpacity
+              style={[styles.button, checking && styles.buttonDisabled]}
               onPress={verifyInternet}
               disabled={checking}
               activeOpacity={0.8}
@@ -165,7 +162,7 @@ export default function InternetConnectionWrapper({ children }: InternetConnecti
                 <Text style={styles.buttonText}>Check Connection</Text>
               )}
             </TouchableOpacity>
-            
+
             {checking && (
               <Text style={styles.checkingText}>Verifying connection status...</Text>
             )}

@@ -6,7 +6,6 @@ import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, Touc
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../components/CustomAlert';
 import Svg, { Circle } from 'react-native-svg';
-import api from '../../utils/api';
 
 const toLocalDateString = (d: Date) => {
   const pad = (n: number) => n.toString().padStart(2, '0');
@@ -42,8 +41,6 @@ export default function DincharyaScreen() {
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateString(new Date()));
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   // Add task state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -127,10 +124,7 @@ export default function DincharyaScreen() {
         }
       }
 
-      const syncTime = await AsyncStorage.getItem('last_synced');
-      if (syncTime) {
-        setLastSynced(syncTime);
-      }
+
 
       const baseDays = getMonthDaysList(dateToLoad);
       const keys = baseDays.map(wd => `dincharya_${wd.dateStr}`);
@@ -342,33 +336,7 @@ export default function DincharyaScreen() {
     return cells;
   };
 
-  const syncData = async () => {
-    if (!user || !user.username) return;
 
-    setIsSyncing(true);
-    try {
-      const payload = {
-        uuid: user.username,
-        date: selectedDate,
-        sync_data: tasks,
-        device_info: 'React Native App',
-      };
-
-      const response = await api.post('/sync', payload);
-
-      if (response.data.success) {
-        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setLastSynced(time);
-        await AsyncStorage.setItem('last_synced', time);
-        showCustomAlert('Success', 'Dincharya synced to server.');
-      }
-    } catch (error) {
-      console.error('Sync failed:', error);
-      showCustomAlert('Sync Failed', 'Could not sync with server. Will try again later.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   if (!user) {
     return (
@@ -392,20 +360,9 @@ export default function DincharyaScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* Header Title with Sync Button */}
+        {/* Header Title */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Dincharya</Text>
-          <TouchableOpacity
-            style={styles.syncButton}
-            onPress={syncData}
-            disabled={isSyncing}
-          >
-            {isSyncing ? (
-              <ActivityIndicator size="small" color="#EA580C" />
-            ) : (
-              <FontAwesome5 name="sync-alt" size={16} color="#EA580C" />
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* Month Calendar Grid View */}
@@ -529,9 +486,7 @@ export default function DincharyaScreen() {
           )}
         </View>
 
-        {lastSynced && (
-          <Text style={styles.lastSyncedText}>Last synced: {lastSynced}</Text>
-        )}
+
 
       </ScrollView>
 
@@ -660,16 +615,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#0F172A',
   },
-  syncButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#FFF7ED',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FFEDD5',
-  },
+
   calendarContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
@@ -956,12 +902,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EA580C',
     borderColor: '#EA580C',
   },
-  lastSyncedText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 20,
-    textAlign: 'center',
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',

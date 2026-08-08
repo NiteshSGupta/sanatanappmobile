@@ -53,7 +53,7 @@ const LEAGUE_DETAILS: LeagueDetail[] = [
     id: 'sprout',
     emoji: '🌱',
     title: 'Sprout',
-    subtitle: 'THE ROOTS',
+    subtitle: 'THE EMERGING ROOTS',
     description: 'Your discipline has taken root. Daily actions are becoming habits, and your mind is learning to choose growth over impulses.',
     progressText: 'days to Frozen',
     milestones: ['7-day streak completed', 'Daily routine becoming consistent', 'Improved self-control'],
@@ -731,9 +731,10 @@ export default function JourneyScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <View style={styles.headerLogo}>
-              <FontAwesome5 name="om" size={20} color="#FFFFFF" />
-            </View>
+            <Image
+              source={require('../../../assets/images/logo.png')}
+              style={styles.headerLogo}
+            />
             <Text style={styles.headerTitle}>Kaivalya</Text>
           </View>
           <Text style={styles.headerUser}>Hi, {user?.name?.split(' ')[0] || 'seeker'}</Text>
@@ -744,9 +745,13 @@ export default function JourneyScreen() {
           <Text style={styles.streakLabel}>SANKALPA DURATION</Text>
 
           <View style={styles.circleWrapper}>
-            {/* Om Background Watermark */}
+            {/* Bow & Arrow Background Watermark */}
             <View style={styles.omWatermark}>
-              <FontAwesome5 name="om" size={120} color="#EA580C" style={{ opacity: 0.05 }} />
+              <Image
+                source={require('../../../assets/images/logo.png')}
+                style={{ width: 100, height: 100, opacity: 0.04 }}
+                resizeMode="contain"
+              />
             </View>
 
             {/* Svg Semi-Circle Ring */}
@@ -775,15 +780,21 @@ export default function JourneyScreen() {
                   <Text style={styles.daysLabel}>Days</Text>
                 </>
               ) : (
-                <>
-                  <Text style={[styles.daysText, { fontSize: 40, marginTop: -5 }]}>00</Text>
-                  <Text style={styles.daysLabel}>Awaiting</Text>
-                </>
+                <Animated.View style={animatedGlowStyle}>
+                  <TouchableOpacity
+                    style={styles.startChallengeBtn}
+                    onPress={() => setIsStartChallengeModalOpen(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.startBtnGlowText}>START</Text>
+                    <Text style={styles.startBtnSubText}>CHALLENGE</Text>
+                  </TouchableOpacity>
+                </Animated.View>
               )}
             </View>
 
             {/* League Badge positioned half-in, half-out at the bottom center border */}
-            {LEAGUE_BADGES[getLeagueData(streakStart ? streakDays : 0).current] && (
+            {streakStart && LEAGUE_BADGES[getLeagueData(streakStart ? streakDays : 0).current] && (
               <TouchableOpacity
                 onPress={() => {
                   const curLeague = getLeagueData(streakStart ? streakDays : 0).current;
@@ -808,18 +819,25 @@ export default function JourneyScreen() {
 
           {/* Challenge Pill / Button under the league icon */}
           <View style={{ alignItems: 'center', marginTop: 36, marginBottom: 8 }}>
-            {!isChallengeActive ? (
-              <Animated.View style={animatedGlowStyle}>
-                <TouchableOpacity style={styles.startChallengeBtn} onPress={() => setIsStartChallengeModalOpen(true)}>
-                  <Text style={styles.startBtnGlowText}>START</Text>
-                  <Text style={styles.startBtnSubText}>CHALLENGE</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            ) : (
+            {isChallengeActive ? (
               <TouchableOpacity style={styles.goalPill} onPress={openEditGoalModal}>
                 <FontAwesome5 name="bullseye" size={9} color="#EA580C" />
                 <Text style={styles.goalPillText}>Challenge: {challengeDays}/{targetGoalDays}d</Text>
               </TouchableOpacity>
+            ) : streakStart ? (
+              <Animated.View style={animatedGlowStyle}>
+                <TouchableOpacity
+                  style={[styles.goalPill, { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, marginTop: 0, gap: 6 }]}
+                  onPress={() => setIsStartChallengeModalOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <FontAwesome5 name="plus-circle" size={12} color="#EA580C" />
+                  <Text style={[styles.goalPillText, { fontSize: 12, fontWeight: '700' }]}>Start New Challenge</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              // Empty spacer to maintain layout spacing and prevent overlap with absolute positioned league icon for new users
+              <View style={{ height: 20 }} />
             )}
           </View>
 

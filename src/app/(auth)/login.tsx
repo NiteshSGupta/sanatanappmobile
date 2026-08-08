@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -47,13 +47,33 @@ export default function LoginScreen() {
       });
 
       if (response.data.success) {
-        if (remember) {
-           await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
-        } else {
-           // For now, still set it to AsyncStorage so session persists temporarily, 
-           // but ideally handled differently if "remember me" is false
-           await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+        // Clear all previous local data to prevent cross-user leakage
+        await AsyncStorage.clear();
+
+        const userData = response.data.user;
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+
+        // Restore user's synced states from the server
+        if (userData.target_goal_days) {
+          await AsyncStorage.setItem('ojas_target_goal_days', userData.target_goal_days.toString());
         }
+        if (userData.journey_status) {
+          await AsyncStorage.setItem('ojas_challenge_active', userData.journey_status === 'active' ? 'true' : 'false');
+        }
+        if (userData.active_goal_start_at) {
+          await AsyncStorage.setItem('ojas_challenge_start', userData.active_goal_start_at);
+          await AsyncStorage.setItem('ojas_streak_start', userData.active_goal_start_at);
+        }
+        if (userData.start_reason) {
+          await AsyncStorage.setItem('ojas_goal_start_reason', userData.start_reason);
+        }
+        if (userData.goals_history) {
+          await AsyncStorage.setItem('ojas_goals_history', JSON.stringify(userData.goals_history));
+        }
+        if (userData.relapses) {
+          await AsyncStorage.setItem('ojas_relapses', JSON.stringify(userData.relapses));
+        }
+
         router.replace('/(tabs)');
       } else {
         showAlert('Error', response.data.message || 'Login failed.');
@@ -76,9 +96,10 @@ export default function LoginScreen() {
           
           {/* Logo / Heading */}
           <View style={styles.headerContainer}>
-            <View style={styles.iconWrapper}>
-               <FontAwesome5 name="om" size={32} color="#FFFFFF" />
-            </View>
+            <Image 
+              source={require('../../../assets/images/logo.png')} 
+              style={styles.iconWrapper} 
+            />
             <Text style={styles.title}>Kaivalya</Text>
             <Text style={styles.subtitle}>Your companion on the path of self-mastery</Text>
           </View>
