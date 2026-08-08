@@ -296,6 +296,17 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Support & Resources Card */}
+        <View style={styles.settingsCard}>
+          <TouchableOpacity style={styles.settingsRow} onPress={() => router.push('/app-guide')}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <FontAwesome5 name="book-open" size={14} color="#EA580C" style={{ width: 18, textAlign: 'center' }} />
+              <Text style={styles.settingsLabel}>App Guide</Text>
+            </View>
+            <FontAwesome5 name="chevron-right" size={14} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+
         {/* Sign Out Button */}
         <TouchableOpacity style={styles.btnSignOut} onPress={handleLogout}>
           <Text style={styles.btnSignOutText}>Sign Out</Text>

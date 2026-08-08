@@ -468,6 +468,12 @@ export default function DincharyaScreen() {
                           <Text style={styles.keystoneBadgeText}>KEYSTONE</Text>
                         </View>
                       )}
+                      {task.type === 'oneday' && (
+                        <View style={styles.oneDayBadge}>
+                          <FontAwesome5 name="calendar-day" size={8} color="#64748B" />
+                          <Text style={styles.oneDayBadgeText}>ONE-DAY TASK</Text>
+                        </View>
+                      )}
                     </View>
                     
                     {task.desc && (
@@ -870,6 +876,20 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '700',
     color: '#EA580C',
+  },
+  oneDayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  oneDayBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#64748B',
   },
   taskDescText: {
     fontSize: 11,

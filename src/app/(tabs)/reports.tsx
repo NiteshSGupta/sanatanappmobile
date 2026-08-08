@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const toLocalDateString = (d: Date) => {
   const pad = (n: number) => n.toString().padStart(2, '0');
@@ -35,6 +35,153 @@ export default function ReportsScreen() {
   const [keystoneCompliance, setKeystoneCompliance] = useState(80);
   const [correlationScore, setCorrelationScore] = useState(83);
   const [goalsHistory, setGoalsHistory] = useState<any[]>([]);
+
+  // Retrospective Modal States
+  const [selectedRetroGoal, setSelectedRetroGoal] = useState<any>(null);
+  const [isRetroModalOpen, setIsRetroModalOpen] = useState(false);
+  const [selectedRetroDate, setSelectedRetroDate] = useState<string | null>(null);
+
+  const getRetroDays = (goal: any) => {
+    if (!goal || !goal.start_date || !goal.completion_date) return [];
+    const days = [];
+    const curr = new Date(goal.start_date);
+    const end = new Date(goal.completion_date);
+
+    // Normalize times to midnight for date comparisons
+    curr.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    while (curr <= end) {
+      days.push(toLocalDateString(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+    return days;
+  };
+
+  const renderRetroHeatmap = () => {
+    if (!selectedRetroGoal) return null;
+    const days = getRetroDays(selectedRetroGoal);
+
+    if (!selectedRetroGoal.daily_logs || Object.keys(selectedRetroGoal.daily_logs).length === 0) {
+      return (
+        <View style={styles.noHeatmapContainer}>
+          <FontAwesome5 name="info-circle" size={16} color="#64748B" style={{ marginBottom: 6 }} />
+          <Text style={styles.noHeatmapText}>
+            Granular calendar data is unavailable for sankalp completed prior to App version 1.1.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.heatmapCard}>
+        <Text style={styles.heatmapSectionTitle}>CHALLENGE HEATMAP</Text>
+
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendBox, { backgroundColor: '#EA580C' }]} />
+            <Text style={styles.legendLabel}>100% Done</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendBox, { backgroundColor: '#FFEDD5', borderWidth: 1, borderColor: '#FDBA74' }]} />
+            <Text style={styles.legendLabel}>Partial</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendBox, { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' }]} />
+            <Text style={styles.legendLabel}>Missed / 0%</Text>
+          </View>
+        </View>
+
+        <View style={styles.heatmapGrid}>
+          {days.map((dateStr, index) => {
+            const log = selectedRetroGoal.daily_logs[dateStr];
+            let bgColor = '#F1F5F9';
+            let borderColor = '#CBD5E1';
+            let total = 0;
+            let completed = 0;
+
+            if (log) {
+              total = log.total;
+              completed = log.completed;
+              if (total > 0) {
+                if (completed === total) {
+                  bgColor = '#EA580C';
+                  borderColor = '#EA580C';
+                } else if (completed > 0) {
+                  bgColor = '#FFEDD5';
+                  borderColor = '#FDBA74';
+                }
+              }
+            }
+
+            const isSelected = selectedRetroDate === dateStr;
+
+            return (
+              <TouchableOpacity
+                key={dateStr}
+                style={[
+                  styles.heatmapCell,
+                  { backgroundColor: bgColor, borderColor: borderColor },
+                  isSelected && styles.heatmapCellSelected
+                ]}
+                onPress={() => setSelectedRetroDate(dateStr)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.heatmapCellText,
+                  { color: bgColor === '#EA580C' ? '#FFFFFF' : '#475569' }
+                ]}>
+                  {index + 1}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.dayDetailsContainer}>
+          {selectedRetroDate ? (() => {
+            const log = selectedRetroGoal.daily_logs[selectedRetroDate];
+            const displayDate = new Date(selectedRetroDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            if (!log || !log.tasks || log.tasks.length === 0) {
+              return (
+                <View>
+                  <Text style={styles.dayDetailsHeader}>{displayDate}</Text>
+                  <Text style={styles.noTasksRetroText}>No routines were scheduled or recorded on this day. 🧘</Text>
+                </View>
+              );
+            }
+
+            return (
+              <View>
+                <Text style={styles.dayDetailsHeader}>{displayDate}</Text>
+                <Text style={styles.dayDetailsSummary}>
+                  Completed {log.completed} out of {log.total} tasks ({log.total > 0 ? Math.round((log.completed / log.total) * 100) : 0}%)
+                </Text>
+
+                <View style={styles.retroTasksList}>
+                  {log.tasks.map((t: any, tid: number) => (
+                    <View key={tid} style={styles.retroTaskRow}>
+                      <View style={[styles.retroTaskCheck, t.completed && styles.retroTaskCheckCompleted]}>
+                        {t.completed && <FontAwesome5 name="check" size={7} color="#FFFFFF" />}
+                      </View>
+                      <Text style={[styles.retroTaskText, t.completed && styles.retroTaskTextCompleted]}>
+                        {t.title}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })() : (
+            <Text style={styles.tapPromptText}>
+              Tap any numbered day cell in the heatmap grid above to view the routine checkoff list for that day.
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  };
 
   const loadReportData = async () => {
     try {
@@ -83,11 +230,11 @@ export default function ReportsScreen() {
           d.setDate(today.getDate() - i);
           const dateStr = toLocalDateString(d);
           const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-          
+
           const stored = taskMap[`dincharya_${dateStr}`];
           const dateTasks = stored ? JSON.parse(stored) : [];
           const completed = dateTasks.length > 0 && dateTasks.every((t: any) => t.completed);
-          
+
           last7Days.push({
             dayName,
             dateStr,
@@ -133,7 +280,7 @@ export default function ReportsScreen() {
         d.setDate(today.getDate() - i);
         const dateStr = toLocalDateString(d);
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-        
+
         // Skip days before start date
         if (d < start && d.toDateString() !== start.toDateString()) {
           last7Days.push({
@@ -194,25 +341,12 @@ export default function ReportsScreen() {
 
   const loadRelapseData = useCallback(async () => {
     try {
-      const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
-      const isActive = activeVal === 'true';
-
-      const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
-      const journeyStartObj = savedStart ? new Date(savedStart) : null;
-
       const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
       if (storedRelapses) {
         const list = JSON.parse(storedRelapses);
-        
-        // Filter current cycle relapses if active, else show all history
-        const filteredList = list.filter((r: any) => {
-          if (!isActive) return true;
-          const rDate = new Date(r.date);
-          return journeyStartObj ? rDate >= journeyStartObj : false;
-        });
 
-        // Show newest first
-        setRelapses([...filteredList].reverse());
+        // Show all relapses (continuous recovery journey)
+        setRelapses([...list].reverse());
 
         // Calculate counts based on time
         const now = new Date();
@@ -224,7 +358,7 @@ export default function ReportsScreen() {
         let monthCount = 0;
         let yearCount = 0;
 
-        filteredList.forEach((r: any) => {
+        list.forEach((r: any) => {
           const rDate = new Date(r.date);
           if (rDate >= oneWeekAgo) weekCount++;
           if (rDate >= oneMonthAgo) monthCount++;
@@ -258,38 +392,25 @@ export default function ReportsScreen() {
       const activeVal = await AsyncStorage.getItem('ojas_challenge_active');
       const isActive = activeVal === 'true';
 
-      if (!isActive) {
-        setTargetGoalDays(90);
-        setTriggerStats([]);
-        setLocationStats([]);
-        setTimeStats([]);
-        setKeystoneCompliance(0);
-        setCorrelationScore(0);
-        return;
-      }
-
       const savedGoal = await AsyncStorage.getItem('ojas_target_goal_days');
       if (savedGoal) {
         setTargetGoalDays(parseInt(savedGoal));
+      } else {
+        setTargetGoalDays(90);
       }
 
       const savedStart = await AsyncStorage.getItem('ojas_challenge_start');
       const journeyStartObj = savedStart ? new Date(savedStart) : null;
 
+      // Load all relapses for trigger analytics (continuous recovery journey)
       const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
       const relapseList = storedRelapses ? JSON.parse(storedRelapses) : [];
-
-      // Filter only current cycle relapses
-      const filteredRelapses = relapseList.filter((r: any) => {
-        const rDate = new Date(r.date);
-        return journeyStartObj ? rDate >= journeyStartObj : false;
-      });
 
       const triggersMap: { [key: string]: number } = {};
       const locationsMap: { [key: string]: number } = {};
       const timesMap: { [key: string]: number } = {};
 
-      filteredRelapses.forEach((r: any) => {
+      relapseList.forEach((r: any) => {
         const trig = r.trigger_type || 'Unknown';
         const loc = r.location || 'Unknown';
         const tod = r.time_of_day || 'Unknown';
@@ -299,69 +420,72 @@ export default function ReportsScreen() {
         timesMap[tod] = (timesMap[tod] || 0) + 1;
       });
 
-      const totalRelapses = filteredRelapses.length || 1;
+      const totalRelapses = relapseList.length || 1;
 
       const computedTriggers = Object.keys(triggersMap).map(k => ({
         name: k,
         percent: Math.round((triggersMap[k] / totalRelapses) * 100)
-      })).sort((a,b) => b.percent - a.percent);
+      })).sort((a, b) => b.percent - a.percent);
 
       const computedLocations = Object.keys(locationsMap).map(k => ({
         name: k,
         percent: Math.round((locationsMap[k] / totalRelapses) * 100)
-      })).sort((a,b) => b.percent - a.percent);
+      })).sort((a, b) => b.percent - a.percent);
 
       const computedTimes = Object.keys(timesMap).map(k => ({
         name: k,
         percent: Math.round((timesMap[k] / totalRelapses) * 100)
-      })).sort((a,b) => b.percent - a.percent);
+      })).sort((a, b) => b.percent - a.percent);
 
       setTriggerStats(computedTriggers);
       setLocationStats(computedLocations);
       setTimeStats(computedTimes);
 
-      // Keystone Habits compliance over last 7 days (optimized batch query)
-      const today = new Date();
-      const last7DaysKeys: string[] = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        if (journeyStartObj && d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
-        const dateStr = toLocalDateString(d);
-        last7DaysKeys.push(`dincharya_${dateStr}`);
-      }
-      const pairs = last7DaysKeys.length > 0 ? await AsyncStorage.multiGet(last7DaysKeys) : [];
-      const taskMap = Object.fromEntries(pairs);
-
-      let totalKeystones = 0;
-      let completedKeystones = 0;
-
-      for (let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        if (journeyStartObj && d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
-
-        const dateStr = toLocalDateString(d);
-        const storedTasks = taskMap[`dincharya_${dateStr}`];
-        if (storedTasks) {
-          const tasks = JSON.parse(storedTasks);
-          const keystones = tasks.filter((t: any) => t.keystone);
-          if (keystones.length > 0) {
-            totalKeystones += keystones.length;
-            completedKeystones += keystones.filter((t: any) => t.completed).length;
-          }
-        } else {
-          const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
-          const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
-          const eTasks = everydayTasksStr ? JSON.parse(everydayTasksStr) : [];
-          const oTasks = onedayTasksStr ? JSON.parse(onedayTasksStr) : [];
-          const combined = [...eTasks, ...oTasks];
-          const keystones = combined.filter((t: any) => t.keystone);
-          totalKeystones += keystones.length;
+      // Keystone Habits compliance over last 7 days (requires active challenge start)
+      let compliance = 0;
+      if (journeyStartObj) {
+        const today = new Date();
+        const last7DaysKeys: string[] = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          if (d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
+          const dateStr = toLocalDateString(d);
+          last7DaysKeys.push(`dincharya_${dateStr}`);
         }
-      }
+        const pairs = last7DaysKeys.length > 0 ? await AsyncStorage.multiGet(last7DaysKeys) : [];
+        const taskMap = Object.fromEntries(pairs);
 
-      const compliance = totalKeystones > 0 ? Math.round((completedKeystones / totalKeystones) * 100) : 0;
+        let totalKeystones = 0;
+        let completedKeystones = 0;
+
+        for (let i = 0; i < 7; i++) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          if (d < journeyStartObj && d.toDateString() !== journeyStartObj.toDateString()) continue;
+
+          const dateStr = toLocalDateString(d);
+          const storedTasks = taskMap[`dincharya_${dateStr}`];
+          if (storedTasks) {
+            const tasks = JSON.parse(storedTasks);
+            const keystones = tasks.filter((t: any) => t.keystone);
+            if (keystones.length > 0) {
+              totalKeystones += keystones.length;
+              completedKeystones += keystones.filter((t: any) => t.completed).length;
+            }
+          } else {
+            const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+            const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
+            const eTasks = everydayTasksStr ? JSON.parse(everydayTasksStr) : [];
+            const oTasks = onedayTasksStr ? JSON.parse(onedayTasksStr) : [];
+            const combined = [...eTasks, ...oTasks];
+            const keystones = combined.filter((t: any) => t.keystone);
+            totalKeystones += keystones.length;
+          }
+        }
+
+        compliance = totalKeystones > 0 ? Math.round((completedKeystones / totalKeystones) * 100) : 0;
+      }
       setKeystoneCompliance(compliance);
 
       const willpower = Math.round((compliance * 0.6) + (successRate * 0.4));
@@ -408,7 +532,7 @@ export default function ReportsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Header */}
         <Text style={styles.headerTitle}>Reports</Text>
 
@@ -452,287 +576,385 @@ export default function ReportsScreen() {
         {activeTab === 'Discipline' && (
           <>
             <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>THIS WEEK</Text>
-          
-          {/* Weekday checkmark row */}
-          <View style={styles.weekdayRow}>
-            {weeklyStatus.map((ws) => (
-              <View key={ws.dateStr} style={styles.weekdayCol}>
-                <View style={[styles.badgeCircle, ws.completed ? styles.badgeChecked : styles.badgeCrossed]}>
-                  <FontAwesome5 
-                    name={ws.completed ? "check" : "times"} 
-                    size={10} 
-                    color={ws.completed ? "#EA580C" : "#94A3B8"} 
-                  />
-                </View>
-                <Text style={styles.weekdayName}>{ws.dayName}</Text>
-              </View>
-            ))}
-          </View>
+              <Text style={styles.cardTitle}>THIS WEEK</Text>
 
-          {/* Simple Custom Bar Chart */}
-          <View style={styles.chartContainer}>
-            {weeklyStatus.map((ws) => {
-              // Calculate dynamic height based on completed tasks, or binary if mock
-              const heightPercent = ws.completed 
-                ? Math.max((ws.completedCount / (ws.tasksCount || 7)) * 100, 40) // minimum visual fill
-                : 0;
-
-              return (
-                <View key={ws.dateStr} style={styles.chartCol}>
-                  <View style={styles.barTrack}>
-                    {ws.completed && (
-                      <View style={[styles.barFill, { height: `${heightPercent}%` }]} />
-                    )}
+              {/* Weekday checkmark row */}
+              <View style={styles.weekdayRow}>
+                {weeklyStatus.map((ws) => (
+                  <View key={ws.dateStr} style={styles.weekdayCol}>
+                    <View style={[styles.badgeCircle, ws.completed ? styles.badgeChecked : styles.badgeCrossed]}>
+                      <FontAwesome5
+                        name={ws.completed ? "check" : "times"}
+                        size={10}
+                        color={ws.completed ? "#EA580C" : "#94A3B8"}
+                      />
+                    </View>
+                    <Text style={styles.weekdayName}>{ws.dayName}</Text>
                   </View>
-                  <Text style={styles.barLabel}>{ws.dayName}</Text>
+                ))}
+              </View>
+
+              {/* Simple Custom Bar Chart */}
+              <View style={styles.chartContainer}>
+                {weeklyStatus.map((ws) => {
+                  // Calculate dynamic height based on completed tasks, or binary if mock
+                  const heightPercent = ws.completed
+                    ? Math.max((ws.completedCount / (ws.tasksCount || 7)) * 100, 40) // minimum visual fill
+                    : 0;
+
+                  return (
+                    <View key={ws.dateStr} style={styles.chartCol}>
+                      <View style={styles.barTrack}>
+                        {ws.completed && (
+                          <View style={[styles.barFill, { height: `${heightPercent}%` }]} />
+                        )}
+                      </View>
+                      <Text style={styles.barLabel}>{ws.dayName}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Dincharya Correlation Card */}
+            <View style={styles.reportCard}>
+              <Text style={styles.cardTitle}>WILLPOWER & HABIT CORRELATION</Text>
+
+              <View style={styles.correlationRow}>
+                <View style={styles.correlationMetric}>
+                  <Text style={styles.correlationVal}>{keystoneCompliance}%</Text>
+                  <Text style={styles.correlationLbl}>Keystone Compliance</Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
+                <View style={styles.correlationDivider} />
+                <View style={styles.correlationMetric}>
+                  <Text style={[styles.correlationVal, { color: '#10B981' }]}>{correlationScore}/100</Text>
+                  <Text style={styles.correlationLbl}>Willpower Score</Text>
+                </View>
+              </View>
 
-        {/* Dincharya Correlation Card */}
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>WILLPOWER & HABIT CORRELATION</Text>
-          
-          <View style={styles.correlationRow}>
-            <View style={styles.correlationMetric}>
-              <Text style={styles.correlationVal}>{keystoneCompliance}%</Text>
-              <Text style={styles.correlationLbl}>Keystone Compliance</Text>
+              <View style={styles.correlationInsightBox}>
+                <FontAwesome5 name="lightbulb" size={14} color="#EA580C" style={styles.insightIcon} />
+                <Text style={styles.correlationInsightText}>
+                  Your Keystone habits (Snan, Meditation, Pranayama) directly build grey matter in the prefrontal cortex. Compliance above 75% reduces urge relapse probability by 90%.
+                </Text>
+              </View>
             </View>
-            <View style={styles.correlationDivider} />
-            <View style={styles.correlationMetric}>
-              <Text style={[styles.correlationVal, { color: '#10B981' }]}>{correlationScore}/100</Text>
-              <Text style={styles.correlationLbl}>Willpower Score</Text>
-            </View>
-          </View>
-
-          <View style={styles.correlationInsightBox}>
-            <FontAwesome5 name="lightbulb" size={14} color="#EA580C" style={styles.insightIcon} />
-            <Text style={styles.correlationInsightText}>
-              Your Keystone habits (Snan, Meditation, Pranayama) directly build grey matter in the prefrontal cortex. Compliance above 75% reduces urge relapse probability by 90%.
-            </Text>
-          </View>
-        </View>
-        </>)}
+          </>)}
 
         {/* Relapse Report Card */}
         {activeTab === 'Recovery' && (
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>RELAPSE REPORT</Text>
-          
-          <View style={styles.relapseStatsContainer}>
-            <View style={styles.relapseStatItem}>
-              <Text style={styles.relapseStatVal}>{relapseStats.week}</Text>
-              <Text style={styles.relapseStatLbl}>THIS WEEK</Text>
+          <View style={styles.reportCard}>
+            <Text style={styles.cardTitle}>RELAPSE REPORT</Text>
+
+            <View style={styles.relapseStatsContainer}>
+              <View style={styles.relapseStatItem}>
+                <Text style={styles.relapseStatVal}>{relapseStats.week}</Text>
+                <Text style={styles.relapseStatLbl}>THIS WEEK</Text>
+              </View>
+              <View style={styles.relapseStatDivider} />
+              <View style={styles.relapseStatItem}>
+                <Text style={styles.relapseStatVal}>{relapseStats.month}</Text>
+                <Text style={styles.relapseStatLbl}>THIS MONTH</Text>
+              </View>
+              <View style={styles.relapseStatDivider} />
+              <View style={styles.relapseStatItem}>
+                <Text style={styles.relapseStatVal}>{relapseStats.year}</Text>
+                <Text style={styles.relapseStatLbl}>THIS YEAR</Text>
+              </View>
             </View>
-            <View style={styles.relapseStatDivider} />
-            <View style={styles.relapseStatItem}>
-              <Text style={styles.relapseStatVal}>{relapseStats.month}</Text>
-              <Text style={styles.relapseStatLbl}>THIS MONTH</Text>
-            </View>
-            <View style={styles.relapseStatDivider} />
-            <View style={styles.relapseStatItem}>
-              <Text style={styles.relapseStatVal}>{relapseStats.year}</Text>
-              <Text style={styles.relapseStatLbl}>THIS YEAR</Text>
-            </View>
+
+            {relapses.length === 0 ? (
+              <Text style={styles.noRelapseText}>No relapses recorded. Keep going strong! 💪</Text>
+            ) : (
+              <View style={{ width: '100%' }}>
+                {/* Trigger Stats */}
+                {triggerStats.length > 0 && (
+                  <View style={styles.breakdownSection}>
+                    <Text style={styles.breakdownSectionTitle}>TOP SLIP TRIGGERS</Text>
+                    {triggerStats.slice(0, 3).map((item) => (
+                      <View key={item.name} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownLabel}>{item.name}</Text>
+                        <View style={styles.breakdownBarBg}>
+                          <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#EF4444' }]} />
+                        </View>
+                        <Text style={styles.breakdownPercent}>{item.percent}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Location Stats */}
+                {locationStats.length > 0 && (
+                  <View style={styles.breakdownSection}>
+                    <Text style={styles.breakdownSectionTitle}>HIGH-RISK LOCATIONS</Text>
+                    {locationStats.slice(0, 3).map((item) => (
+                      <View key={item.name} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownLabel}>{item.name}</Text>
+                        <View style={styles.breakdownBarBg}>
+                          <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#3B82F6' }]} />
+                        </View>
+                        <Text style={styles.breakdownPercent}>{item.percent}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Time of Day Stats */}
+                {timeStats.length > 0 && (
+                  <View style={styles.breakdownSection}>
+                    <Text style={styles.breakdownSectionTitle}>DANGER HOURS</Text>
+                    {timeStats.slice(0, 3).map((item) => (
+                      <View key={item.name} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownLabel}>{item.name}</Text>
+                        <View style={styles.breakdownBarBg}>
+                          <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#8B5CF6' }]} />
+                        </View>
+                        <Text style={styles.breakdownPercent}>{item.percent}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <Text style={styles.relapseSectionSubTitle}>Recent Lessons Learned</Text>
+                <View style={styles.relapseList}>
+                  {relapses.slice(0, 3).map((r, idx) => {
+                    const dateObj = new Date(r.date);
+                    const dateFormatted = dateObj.toLocaleDateString('en-US', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    return (
+                      <View key={idx.toString()} style={styles.relapseListItem}>
+                        <View style={styles.relapseListDot} />
+                        <View style={styles.relapseListMeta}>
+                          <Text style={styles.relapseListDate}>{dateFormatted} · {r.trigger_type || 'Unknown'} @ {r.location || 'Unknown'}</Text>
+                          <Text style={styles.relapseListReason}>&quot;{r.notes || r.reason}&quot;</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
           </View>
+        )}
 
-          {relapses.length === 0 ? (
-            <Text style={styles.noRelapseText}>No relapses recorded. Keep going strong! 💪</Text>
-          ) : (
-            <View style={{ width: '100%' }}>
-              {/* Trigger Stats */}
-              {triggerStats.length > 0 && (
-                <View style={styles.breakdownSection}>
-                  <Text style={styles.breakdownSectionTitle}>TOP SLIP TRIGGERS</Text>
-                  {triggerStats.slice(0, 3).map((item) => (
-                    <View key={item.name} style={styles.breakdownRow}>
-                      <Text style={styles.breakdownLabel}>{item.name}</Text>
-                      <View style={styles.breakdownBarBg}>
-                        <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#EF4444' }]} />
-                      </View>
-                      <Text style={styles.breakdownPercent}>{item.percent}%</Text>
-                    </View>
-                  ))}
+        {/* League Journey Section */}
+        {activeTab === 'Challenges' && (
+          <>
+            {/* Goal Days Progress Card */}
+            <View style={styles.reportCard}>
+              <Text style={styles.cardTitle}>ACTIVE GOAL PROGRESS</Text>
+              <View style={styles.goalInfoRow}>
+                <View style={styles.goalInfoBlock}>
+                  <Text style={styles.goalInfoVal}>{challengeProgressDays} days</Text>
+                  <Text style={styles.goalInfoLbl}>CURRENT PROGRESS</Text>
                 </View>
-              )}
-
-              {/* Location Stats */}
-              {locationStats.length > 0 && (
-                <View style={styles.breakdownSection}>
-                  <Text style={styles.breakdownSectionTitle}>HIGH-RISK LOCATIONS</Text>
-                  {locationStats.slice(0, 3).map((item) => (
-                    <View key={item.name} style={styles.breakdownRow}>
-                      <Text style={styles.breakdownLabel}>{item.name}</Text>
-                      <View style={styles.breakdownBarBg}>
-                        <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#3B82F6' }]} />
-                      </View>
-                      <Text style={styles.breakdownPercent}>{item.percent}%</Text>
-                    </View>
-                  ))}
+                <View style={styles.goalInfoBlockRight}>
+                  <Text style={styles.goalInfoVal}>{targetGoalDays} days</Text>
+                  <Text style={styles.goalInfoLbl}>TARGET GOAL</Text>
                 </View>
-              )}
+              </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${Math.min((challengeProgressDays / targetGoalDays) * 100, 100)}%` }]} />
+              </View>
+              <Text style={styles.goalStatusText}>
+                {challengeProgressDays >= targetGoalDays
+                  ? "🎉 Goal achieved! Set a new goal from the Home screen to continue rewiring your brain."
+                  : `${targetGoalDays - challengeProgressDays} days remaining to reboot your reward system.`}
+              </Text>
+            </View>
 
-              {/* Time of Day Stats */}
-              {timeStats.length > 0 && (
-                <View style={styles.breakdownSection}>
-                  <Text style={styles.breakdownSectionTitle}>DANGER HOURS</Text>
-                  {timeStats.slice(0, 3).map((item) => (
-                    <View key={item.name} style={styles.breakdownRow}>
-                      <Text style={styles.breakdownLabel}>{item.name}</Text>
-                      <View style={styles.breakdownBarBg}>
-                        <View style={[styles.breakdownBarFill, { width: `${item.percent}%`, backgroundColor: '#8B5CF6' }]} />
-                      </View>
-                      <Text style={styles.breakdownPercent}>{item.percent}%</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
+            <View style={styles.reportCard}>
+              <Text style={styles.cardTitle}>LEAGUE JOURNEY</Text>
 
-              <Text style={styles.relapseSectionSubTitle}>Recent Lessons Learned</Text>
-              <View style={styles.relapseList}>
-                {relapses.slice(0, 3).map((r, idx) => {
-                  const dateObj = new Date(r.date);
-                  const dateFormatted = dateObj.toLocaleDateString('en-US', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
+              <View style={styles.leagueList}>
+                {LEAGUES.map((l) => {
+                  const isAchieved = currentStreak >= l.req;
+                  const nextLeague = LEAGUES[LEAGUES.findIndex(x => x.name === l.name) + 1];
+                  const isActiveLeague = currentStreak >= l.req && (!nextLeague || currentStreak < nextLeague.req);
+
                   return (
-                    <View key={idx.toString()} style={styles.relapseListItem}>
-                      <View style={styles.relapseListDot} />
-                      <View style={styles.relapseListMeta}>
-                        <Text style={styles.relapseListDate}>{dateFormatted} · {r.trigger_type || 'Unknown'} @ {r.location || 'Unknown'}</Text>
-                        <Text style={styles.relapseListReason}>&quot;{r.notes || r.reason}&quot;</Text>
+                    <View key={l.name} style={[styles.leagueItem, !isAchieved && styles.leagueItemLocked]}>
+                      <View style={[
+                        styles.leagueIconWrapper,
+                        isAchieved ? styles.leagueIconWrapperActive : styles.leagueIconWrapperLocked
+                      ]}>
+                        {l.image ? (
+                          <Image
+                            source={l.image}
+                            style={[
+                              {
+                                width: l.imgSize || 18,
+                                height: l.imgSize || 18,
+                                opacity: isAchieved ? 1 : 0.7
+                              },
+                              l.imgStyle
+                            ]}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <FontAwesome5
+                            name={l.icon}
+                            size={14}
+                            color={isAchieved ? '#EA580C' : '#94A3B8'}
+                          />
+                        )}
+                      </View>
+
+                      <View style={styles.leagueInfo}>
+                        <Text style={[styles.leagueNameText, isAchieved && styles.leagueNameTextActive]}>
+                          {l.name} {isActiveLeague && <Text style={styles.youIndicator}>← you</Text>}
+                        </Text>
+
+                        {isActiveLeague && l.name !== 'Brahmachari' && (
+                          <View style={styles.leagueProgressContainer}>
+                            <View style={styles.leagueProgressTrack}>
+                              <View style={[styles.leagueProgressFill, { width: `${activeProgress}%` }]} />
+                            </View>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.leagueRight}>
+                        <Text style={styles.leagueDaysText}>{l.days}</Text>
+                        {isAchieved && (
+                          <FontAwesome5 name="check" size={12} color="#EA580C" style={styles.checkIcon} />
+                        )}
                       </View>
                     </View>
                   );
                 })}
               </View>
             </View>
-          )}
-        </View>
-        )}
 
-        {/* League Journey Section */}
-        {activeTab === 'Challenges' && (
-          <>
-        {/* Goal Days Progress Card */}
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>ACTIVE GOAL PROGRESS</Text>
-          <View style={styles.goalInfoRow}>
-            <View style={styles.goalInfoBlock}>
-              <Text style={styles.goalInfoVal}>{challengeProgressDays} days</Text>
-              <Text style={styles.goalInfoLbl}>CURRENT PROGRESS</Text>
-            </View>
-            <View style={styles.goalInfoBlockRight}>
-              <Text style={styles.goalInfoVal}>{targetGoalDays} days</Text>
-              <Text style={styles.goalInfoLbl}>TARGET GOAL</Text>
-            </View>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${Math.min((challengeProgressDays / targetGoalDays) * 100, 100)}%` }]} />
-          </View>
-          <Text style={styles.goalStatusText}>
-            {challengeProgressDays >= targetGoalDays 
-              ? "🎉 Goal achieved! Set a new goal from the Home screen to continue rewiring your brain."
-              : `${targetGoalDays - challengeProgressDays} days remaining to reboot your reward system.`}
-          </Text>
-        </View>
-
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>LEAGUE JOURNEY</Text>
-          
-          <View style={styles.leagueList}>
-            {LEAGUES.map((l) => {
-              const isAchieved = currentStreak >= l.req;
-              const nextLeague = LEAGUES[LEAGUES.findIndex(x => x.name === l.name) + 1];
-              const isActiveLeague = currentStreak >= l.req && (!nextLeague || currentStreak < nextLeague.req);
-
-              return (
-                <View key={l.name} style={[styles.leagueItem, !isAchieved && styles.leagueItemLocked]}>
-                  <View style={[
-                    styles.leagueIconWrapper, 
-                    isAchieved ? styles.leagueIconWrapperActive : styles.leagueIconWrapperLocked
-                  ]}>
-                    {l.image ? (
-                      <Image 
-                        source={l.image} 
-                        style={[
-                          { 
-                            width: l.imgSize || 18, 
-                            height: l.imgSize || 18, 
-                            opacity: isAchieved ? 1 : 0.7 
-                          }, 
-                          l.imgStyle
-                        ]} 
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <FontAwesome5 
-                        name={l.icon} 
-                        size={14} 
-                        color={isAchieved ? '#EA580C' : '#94A3B8'} 
-                      />
-                    )}
-                  </View>
-
-                  <View style={styles.leagueInfo}>
-                    <Text style={[styles.leagueNameText, isAchieved && styles.leagueNameTextActive]}>
-                      {l.name} {isActiveLeague && <Text style={styles.youIndicator}>← you</Text>}
-                    </Text>
-                    
-                    {isActiveLeague && l.name !== 'Brahmachari' && (
-                      <View style={styles.leagueProgressContainer}>
-                        <View style={styles.leagueProgressTrack}>
-                          <View style={[styles.leagueProgressFill, { width: `${activeProgress}%` }]} />
+            {/* Goal History Section */}
+            <View style={styles.reportCard}>
+              <Text style={styles.cardTitle}>GOAL HISTORY</Text>
+              {goalsHistory.length === 0 ? (
+                <Text style={styles.noRelapseText}>No completed goals yet. Complete a Sankalpa to add to your history! 🏆</Text>
+              ) : (
+                <View style={styles.relapseList}>
+                  {goalsHistory.map((g, idx) => {
+                    const startFormatted = new Date(g.start_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+                    const endFormatted = new Date(g.completion_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+                    return (
+                      <TouchableOpacity
+                        key={g.id || idx.toString()}
+                        style={styles.historyListItemClickable}
+                        onPress={() => {
+                          setSelectedRetroGoal(g);
+                          setSelectedRetroDate(null);
+                          setIsRetroModalOpen(true);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.historyDot} />
+                        <View style={styles.relapseListMeta}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '95%' }}>
+                            <Text style={styles.historyTitle}>{g.target_days}-Day Challenge Completed! 🎉</Text>
+                            <FontAwesome5 name="chevron-right" size={10} color="#94A3B8" />
+                          </View>
+                          <Text style={styles.relapseListDate}>{startFormatted} — {endFormatted}</Text>
+                          {g.overall_completion_rate !== undefined && (
+                            <Text style={styles.historyCompletionRate}>Routine Completion: {g.overall_completion_rate}%</Text>
+                          )}
+                          <Text style={styles.historyReason}>&quot;{g.start_reason}&quot;</Text>
                         </View>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.leagueRight}>
-                    <Text style={styles.leagueDaysText}>{l.days}</Text>
-                    {isAchieved && (
-                      <FontAwesome5 name="check" size={12} color="#EA580C" style={styles.checkIcon} />
-                    )}
-                  </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Goal History Section */}
-        <View style={styles.reportCard}>
-          <Text style={styles.cardTitle}>GOAL HISTORY</Text>
-          {goalsHistory.length === 0 ? (
-            <Text style={styles.noRelapseText}>No completed goals yet. Claim victory on a challenge to add to your history! 🏆</Text>
-          ) : (
-            <View style={styles.relapseList}>
-              {goalsHistory.map((g, idx) => {
-                const startFormatted = new Date(g.start_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-                const endFormatted = new Date(g.completion_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-                return (
-                  <View key={g.id || idx.toString()} style={styles.historyListItem}>
-                    <View style={styles.historyDot} />
-                    <View style={styles.relapseListMeta}>
-                      <Text style={styles.historyTitle}>{g.target_days}-Day Challenge Completed! 🎉</Text>
-                      <Text style={styles.relapseListDate}>{startFormatted} — {endFormatted}</Text>
-                      <Text style={styles.historyReason}>&quot;{g.start_reason}&quot;</Text>
-                    </View>
-                  </View>
-                );
-              })}
+              )}
             </View>
-          )}
-        </View>
-        </>)}
+          </>)}
 
       </ScrollView>
+
+      {/* Challenge Retrospective Modal */}
+      <Modal visible={isRetroModalOpen} transparent animationType="slide" onRequestClose={() => setIsRetroModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.retroModalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Challenge Retrospective</Text>
+                {selectedRetroGoal && (
+                  <Text style={styles.modalSubtitle}>
+                    {selectedRetroGoal.target_days}-Day Goal Completed
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setIsRetroModalOpen(false)}>
+                <FontAwesome5 name="times" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedRetroGoal && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                {/* Reason Card */}
+                <View style={styles.retroReasonCard}>
+                  <FontAwesome5 name="quote-left" size={12} color="#EA580C" style={{ marginBottom: 6 }} />
+                  <Text style={styles.retroReasonText}>&quot;{selectedRetroGoal.start_reason}&quot;</Text>
+                  <Text style={styles.retroDurationText}>
+                    Started: {new Date(selectedRetroGoal.start_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    {"\n"}
+                    Ended: {new Date(selectedRetroGoal.completion_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </Text>
+                </View>
+
+                {/* Overall Stats Card */}
+                {selectedRetroGoal.overall_completion_rate !== undefined && (
+                  <View style={styles.retroStatsGrid}>
+                    <View style={styles.retroStatCard}>
+                      <Text style={styles.retroStatVal}>{selectedRetroGoal.overall_completion_rate}%</Text>
+                      <Text style={styles.retroStatLabel}>Overall Success</Text>
+                    </View>
+                    <View style={styles.retroStatCard}>
+                      <Text style={styles.retroStatVal}>{selectedRetroGoal.total_tasks_completed}</Text>
+                      <Text style={styles.retroStatLabel}>Tasks Completed</Text>
+                    </View>
+                    <View style={styles.retroStatCard}>
+                      <Text style={styles.retroStatVal}>{selectedRetroGoal.total_tasks_scheduled}</Text>
+                      <Text style={styles.retroStatLabel}>Tasks Scheduled</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Relapse Snapshot during Challenge */}
+                {selectedRetroGoal.relapses_during_challenge !== undefined && (
+                  <View style={[styles.retroStatsGrid, { marginTop: -10 }]}>
+                    <View style={[
+                      styles.retroStatCard,
+                      {
+                        backgroundColor: selectedRetroGoal.relapses_during_challenge === 0 ? '#F0FDF4' : '#FEF2F2',
+                        borderColor: selectedRetroGoal.relapses_during_challenge === 0 ? '#DCFCE7' : '#FEE2E2',
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: 12
+                      }
+                    ]}>
+                      <FontAwesome5
+                        name={selectedRetroGoal.relapses_during_challenge === 0 ? "shield-alt" : "exclamation-triangle"}
+                        size={16}
+                        color={selectedRetroGoal.relapses_during_challenge === 0 ? '#16A34A' : '#EF4444'}
+                      />
+                      <Text style={[styles.retroStatLabel, { color: selectedRetroGoal.relapses_during_challenge === 0 ? '#15803D' : '#B91C1C', fontSize: 12, fontWeight: '700' }]}>
+                        Recovery during Challenge: {selectedRetroGoal.relapses_during_challenge} Relapse(s)
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Heatmap Section */}
+                {renderRetroHeatmap()}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1186,5 +1408,239 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  historyListItemClickable: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  historyCompletionRate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#EA580C',
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  retroModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    paddingBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  retroReasonCard: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  retroReasonText: {
+    fontSize: 14,
+    color: '#7C2D12',
+    lineHeight: 20,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  retroDurationText: {
+    fontSize: 11,
+    color: '#9A3412',
+    marginTop: 10,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  retroStatsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  retroStatCard: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+  },
+  retroStatVal: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#EA580C',
+    marginBottom: 2,
+  },
+  retroStatLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  noHeatmapContainer: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  noHeatmapText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  heatmapCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+  },
+  heatmapSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 1.0,
+    marginBottom: 12,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+  },
+  legendLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  heatmapGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  heatmapCell: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heatmapCellSelected: {
+    borderColor: '#0F172A',
+    borderWidth: 2,
+    transform: [{ scale: 1.1 }],
+  },
+  heatmapCellText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  dayDetailsContainer: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    minHeight: 100,
+  },
+  dayDetailsHeader: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  dayDetailsSummary: {
+    fontSize: 12,
+    color: '#EA580C',
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  noTasksRetroText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontStyle: 'italic',
+  },
+  tapPromptText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  retroTasksList: {
+    gap: 8,
+  },
+  retroTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  retroTaskCheck: {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  retroTaskCheckCompleted: {
+    backgroundColor: '#EA580C',
+    borderColor: '#EA580C',
+  },
+  retroTaskText: {
+    fontSize: 12,
+    color: '#475569',
+  },
+  retroTaskTextCompleted: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
   },
 });

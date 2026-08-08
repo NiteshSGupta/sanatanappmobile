@@ -166,6 +166,9 @@ export default function JourneyScreen() {
   const [isStartChallengeModalOpen, setIsStartChallengeModalOpen] = useState(false);
   const [isEditGoalModalOpen, setIsEditGoalModalOpen] = useState(false);
   const [isGoalCompletedModalOpen, setIsGoalCompletedModalOpen] = useState(false);
+  const [isArchivedConfirmModalOpen, setIsArchivedConfirmModalOpen] = useState(false);
+  const [activeChallengeCompletionRate, setActiveChallengeCompletionRate] = useState(0);
+  const [activeChallengeBestStreak, setActiveChallengeBestStreak] = useState(0);
 
   // Modal Inputs
   const [startGoalDays, setStartGoalDays] = useState(90);
@@ -366,11 +369,91 @@ export default function JourneyScreen() {
     }
   };
 
+  const calculateActiveChallengeStats = async () => {
+    try {
+      if (!challengeStart) return;
+      const start = new Date(challengeStart);
+      const end = new Date();
+      const dateKeys: string[] = [];
+      const dateList: string[] = [];
+
+      const temp = new Date(start);
+      while (temp <= end) {
+        const dateStr = toLocalDateString(temp);
+        dateKeys.push(`dincharya_${dateStr}`);
+        dateList.push(dateStr);
+        temp.setDate(temp.getDate() + 1);
+      }
+
+      let totalScheduled = 0;
+      let totalCompleted = 0;
+
+      if (dateKeys.length > 0) {
+        const pairs = await AsyncStorage.multiGet(dateKeys);
+        const taskMap = Object.fromEntries(pairs);
+
+        for (const dateStr of dateList) {
+          const stored = taskMap[`dincharya_${dateStr}`];
+          if (stored) {
+            const tasks = JSON.parse(stored);
+            totalScheduled += tasks.length;
+            totalCompleted += tasks.filter((t: any) => t.completed).length;
+          } else {
+            const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+            const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
+            const everyday = everydayTasksStr ? JSON.parse(everydayTasksStr) : [];
+            const oneday = onedayTasksStr ? JSON.parse(onedayTasksStr) : [];
+            totalScheduled += everyday.length + oneday.length;
+          }
+        }
+      }
+
+      const rate = totalScheduled > 0 ? Math.round((totalCompleted / totalScheduled) * 100) : 0;
+      setActiveChallengeCompletionRate(rate);
+
+      // Best streak calculation during active challenge
+      const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
+      const relapseList = storedRelapses ? JSON.parse(storedRelapses) : [];
+
+      const relDates = relapseList
+        .map((r: any) => new Date(r.date))
+        .filter((rDate: Date) => rDate >= start && rDate <= end)
+        .sort((a: any, b: any) => a.getTime() - b.getTime());
+
+      let bestStr = 0;
+      if (relDates.length === 0) {
+        const diff = end.getTime() - start.getTime();
+        bestStr = Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+      } else {
+        let prevDate = new Date(start);
+        relDates.forEach((rDate: Date) => {
+          const diff = rDate.getTime() - prevDate.getTime();
+          const dCount = Math.floor(diff / (1000 * 60 * 60 * 24));
+          if (dCount > bestStr) bestStr = dCount;
+          prevDate = rDate;
+        });
+        const diff = end.getTime() - prevDate.getTime();
+        const dCount = Math.floor(diff / (1000 * 60 * 60 * 24));
+        if (dCount > bestStr) bestStr = dCount;
+      }
+
+      setActiveChallengeBestStreak(bestStr);
+    } catch (e) {
+      console.error('Error calculating active challenge stats:', e);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       loadJourney();
     }, [])
   );
+
+  useEffect(() => {
+    if (isGoalCompletedModalOpen) {
+      calculateActiveChallengeStats();
+    }
+  }, [isGoalCompletedModalOpen]);
 
   useEffect(() => {
     if (!isChallengeActive) {
@@ -555,6 +638,80 @@ export default function JourneyScreen() {
       const storedHistory = await AsyncStorage.getItem('ojas_goals_history');
       const history = storedHistory ? JSON.parse(storedHistory) : [];
 
+      // Compile routine history logs during this challenge
+      let overallCompletionRate = 0;
+      let totalTasksScheduled = 0;
+      let totalTasksCompleted = 0;
+      const dailyLogs: { [key: string]: any } = {};
+
+      if (challengeStart) {
+        const start = new Date(challengeStart);
+        const end = new Date();
+        const dateKeys: string[] = [];
+        const dateList: string[] = [];
+
+        const temp = new Date(start);
+        while (temp <= end) {
+          const dateStr = toLocalDateString(temp);
+          dateKeys.push(`dincharya_${dateStr}`);
+          dateList.push(dateStr);
+          temp.setDate(temp.getDate() + 1);
+        }
+
+        if (dateKeys.length > 0) {
+          const pairs = await AsyncStorage.multiGet(dateKeys);
+          const taskMap = Object.fromEntries(pairs);
+
+          for (const dateStr of dateList) {
+            const stored = taskMap[`dincharya_${dateStr}`];
+            if (stored) {
+              const tasks = JSON.parse(stored);
+              const total = tasks.length;
+              const completed = tasks.filter((t: any) => t.completed).length;
+              totalTasksScheduled += total;
+              totalTasksCompleted += completed;
+              dailyLogs[dateStr] = {
+                total,
+                completed,
+                tasks: tasks.map((t: any) => ({ title: t.title, completed: t.completed, icon: t.icon })),
+              };
+            } else {
+              const everydayTasksStr = await AsyncStorage.getItem('ojas_everyday_tasks');
+              const onedayTasksStr = await AsyncStorage.getItem(`ojas_oneday_tasks_${dateStr}`);
+              const everyday = everydayTasksStr ? JSON.parse(everydayTasksStr) : [];
+              const oneday = onedayTasksStr ? JSON.parse(onedayTasksStr) : [];
+              const total = everyday.length + oneday.length;
+              totalTasksScheduled += total;
+              dailyLogs[dateStr] = {
+                total,
+                completed: 0,
+                tasks: [...everyday, ...oneday].map((t: any) => ({ title: t.title, completed: false, icon: t.icon })),
+              };
+            }
+          }
+        }
+        if (totalTasksScheduled > 0) {
+          overallCompletionRate = Math.round((totalTasksCompleted / totalTasksScheduled) * 100);
+        }
+      }
+
+      // Count relapses during challenge
+      let relapsesDuringChallenge = 0;
+      try {
+        const storedRelapses = await AsyncStorage.getItem('ojas_relapses');
+        if (storedRelapses && challengeStart) {
+          const list = JSON.parse(storedRelapses);
+          const start = new Date(challengeStart);
+          const end = new Date();
+          relapsesDuringChallenge = list.filter((r: any) => {
+            const rDate = new Date(r.date);
+            return rDate >= start && rDate <= end;
+          }).length;
+        }
+      } catch (err) {
+        console.error('Error counting relapses during challenge:', err);
+      }
+
       const newArchivedGoal = {
         id: Date.now().toString(),
         target_days: targetGoalDays,
@@ -562,6 +719,11 @@ export default function JourneyScreen() {
         completion_date: new Date().toISOString(),
         start_reason: startReason,
         status: 'completed',
+        overall_completion_rate: overallCompletionRate,
+        total_tasks_scheduled: totalTasksScheduled,
+        total_tasks_completed: totalTasksCompleted,
+        daily_logs: dailyLogs,
+        relapses_during_challenge: relapsesDuringChallenge,
       };
 
       const updatedHistory = [...history, newArchivedGoal];
@@ -599,7 +761,7 @@ export default function JourneyScreen() {
         });
       }
 
-      showCustomAlert('Success: Congratulations! 🎉', 'Victory archived. Start your next phase when ready.');
+      setIsArchivedConfirmModalOpen(true);
     } catch (e) {
       console.error(e);
     }
@@ -1069,7 +1231,7 @@ export default function JourneyScreen() {
 
             <Text style={styles.relapseInputLabel}>SELECT TARGET DAYS</Text>
             <View style={styles.presetGrid}>
-              {[7, 21, 40, 90, 180, 365].map((val) => (
+              {[2, 7, 21, 40, 90, 180, 365].map((val) => (
                 <TouchableOpacity
                   key={val}
                   style={[styles.presetBtn, startGoalDays === val && styles.presetBtnActive]}
@@ -1081,12 +1243,13 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {startGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
-                startGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
-                  startGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
-                    startGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
-                      startGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
-                        '365 Days · Brahmachari Challenge 🏆'}
+              {startGoalDays === 2 ? '2 Days · Testing Challenge 🧪' :
+                startGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
+                  startGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
+                    startGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
+                      startGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
+                        startGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
+                          '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
             <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
@@ -1133,10 +1296,16 @@ export default function JourneyScreen() {
             </Text>
 
             <Text style={styles.relapseInputLabel}>TARGET CHALLENGE (DAYS)</Text>
-            <View style={styles.presetGrid}>
-              {[7, 21, 40, 90, 180, 365].map((val) => (
+            {isChallengeActive && (
+              <Text style={{ fontSize: 11, color: '#EA580C', fontWeight: '600', marginBottom: 8 }}>
+                🙃 Target days cannot be changed while a challenge is active.
+              </Text>
+            )}
+            <View style={[styles.presetGrid, isChallengeActive && { opacity: 0.6 }]}>
+              {[2, 7, 21, 40, 90, 180, 365].map((val) => (
                 <TouchableOpacity
                   key={val}
+                  disabled={isChallengeActive}
                   style={[styles.presetBtn, editGoalDays === val && styles.presetBtnActive]}
                   onPress={() => setEditGoalDays(val)}
                 >
@@ -1146,15 +1315,16 @@ export default function JourneyScreen() {
               ))}
             </View>
             <Text style={styles.selectedPresetLabel}>
-              {editGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
-                editGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
-                  editGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
-                    editGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
-                      editGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
-                        '365 Days · Brahmachari Challenge 🏆'}
+              {editGoalDays === 2 ? '2 Days · Testing Challenge 🧪' :
+                editGoalDays === 7 ? '7 Days · Sprout Challenge 🌱' :
+                  editGoalDays === 21 ? '21 Days · Frozen Challenge ❄️' :
+                    editGoalDays === 40 ? '40 Days · Bloom Challenge 🌸' :
+                      editGoalDays === 90 ? '90 Days · Season Challenge 🍂' :
+                        editGoalDays === 180 ? '180 Days · Aurora Challenge ✨' :
+                          '365 Days · Brahmachari Challenge 🏆'}
             </Text>
 
-            <Text style={styles.relapseInputLabel}>YOUR INTENTION / RESOLVE</Text>
+            <Text style={styles.relapseInputLabel}>YOUR INTENTION / Goal</Text>
             <TextInput
               style={[styles.relapseTextInput, { width: '100%', minHeight: 60, marginBottom: 20 }]}
               placeholder="Edit your start reason..."
@@ -1182,33 +1352,85 @@ export default function JourneyScreen() {
         </View>
       </Modal>
 
-      {/* Goal Completed Celebration Modal */}
+      {/* Sankalpa Completed Celebration Modal */}
       <Modal visible={isGoalCompletedModalOpen} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: '#EA580C', borderWidth: 2 }]}>
             <View style={[styles.modalIconBg, { backgroundColor: '#FEF3C7' }]}>
               <FontAwesome5 name="trophy" size={28} color="#D97706" />
             </View>
-            <Text style={[styles.goalModalTitle, { color: '#B45309' }]}>Victory Achieved! 🏆</Text>
+            <Text style={[styles.goalModalTitle, { color: '#B45309' }]}>🏆 Sankalpa Completed!</Text>
             <Text style={styles.goalModalSubtitle}>
-              Congratulations! You have successfully completed your target of {targetGoalDays} days clean.
+              {targetGoalDays}-Day Discipline Journey
             </Text>
 
-            <View style={styles.victoryCard}>
-              <Text style={styles.victoryLabel}>INTENTION MET</Text>
-              <Text style={styles.victoryText}>&quot;{startReason}&quot;</Text>
+            <Text style={[styles.victoryNextPhaseText, { textAlign: 'center', marginBottom: 16 }]}>
+              You completed your {targetGoalDays}-day Sankalpa.{"\n"}
+              Your daily discipline and consistency have been recorded as part of your journey.
+            </Text>
+
+            <View style={[styles.victoryCard, { width: '100%', padding: 14, gap: 8, marginBottom: 20 }]}>
+              <Text style={[styles.victoryLabel, { marginBottom: 6 }]}>CHALLENGE SUMMARY</Text>
+              <Text style={{ fontSize: 13, color: '#475569', fontWeight: '600' }}>
+                📅 {targetGoalDays} Days Completed
+              </Text>
+              <Text style={{ fontSize: 13, color: '#475569', fontWeight: '600' }}>
+                ✅ {activeChallengeCompletionRate}% Dincharya Completion
+              </Text>
+              <Text style={{ fontSize: 13, color: '#475569', fontWeight: '600' }}>
+                🔥 {activeChallengeBestStreak} Days Best Recovery Streak
+              </Text>
             </View>
 
-            <Text style={styles.victoryNextPhaseText}>
-              Claiming your victory will archive this challenge into history and reset your active streak/dincharya/relapses.
+            <Text style={[styles.victoryNextPhaseText, { color: '#64748B', fontSize: 11, textAlign: 'center', marginBottom: 20 }]}>
+              Your Sankalpa is complete, but your journey continues.{"\n\n"}
+              Your Recovery Journey is not reset. Your recovery streak, relapse history, and progress remain unchanged.
             </Text>
 
-            <TouchableOpacity
-              style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#D97706', marginBottom: 0 }]}
-              onPress={claimVictory}
-            >
-              <Text style={styles.modalBtnPrimaryText}>Claim Victory & Restart</Text>
-            </TouchableOpacity>
+            <View style={{ width: '100%', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#EA580C', marginBottom: 0 }]}
+                onPress={claimVictory}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Archive & Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Sankalpa Archived Confirmation Modal */}
+      <Modal visible={isArchivedConfirmModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#E2E8F0', borderWidth: 1 }]}>
+            <View style={[styles.modalIconBg, { backgroundColor: '#F0FDF4' }]}>
+              <FontAwesome5 name="check" size={24} color="#16A34A" />
+            </View>
+            <Text style={[styles.goalModalTitle, { color: '#16A34A' }]}>Sankalpa Archived 🌱</Text>
+            <Text style={[styles.goalModalSubtitle, { textAlign: 'center', marginBottom: 20 }]}>
+              Your {targetGoalDays}-day discipline journey has been saved to History.
+              {"\n\n"}
+              Ready to begin your next Sankalpa?
+            </Text>
+
+            <View style={{ width: '100%', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.modalBtnPrimary, { width: '100%', backgroundColor: '#EA580C', marginBottom: 0 }]}
+                onPress={() => {
+                  setIsArchivedConfirmModalOpen(false);
+                  setIsStartChallengeModalOpen(true);
+                }}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Start New Sankalpa</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalBtnSecondary, { width: '100%', borderColor: '#E2E8F0', borderWidth: 1 }]}
+                onPress={() => setIsArchivedConfirmModalOpen(false)}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Maybe Later</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
